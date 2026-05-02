@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>نظام مدارس الأحد_جمعيه _مار بولس</title>
+    <title>نظام مدارس الأحد - جمعيه مار بولس</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -15,32 +15,14 @@
     <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Firebase (الطريقة القديمة - أكثر استقراراً) -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     
     <style>
-        * {
-            font-family: 'Tajawal', system-ui, sans-serif;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .fade-in { animation: fadeIn 0.3s ease-out; }
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #6366f1;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        * { font-family: 'Tajawal', system-ui, sans-serif; }
+        .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid #f3f3f3; border-top: 3px solid #6366f1; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -49,17 +31,9 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
         
-        // فصول المدرسة
-        const CLASSES = [
-            "أولى ابتدائي", "ثانية ابتدائي", "ثالثة ابتدائي",
-            "رابعة ابتدائي", "خامسة ابتدائي", "سادسة ابتدائي",
-            "أولى إعدادي", "ثانية إعدادي", "ثالثة إعدادي",
-            "أولى ثانوي", "ثانية ثانوي", "ثالثة ثانوي"
-        ];
-        
+        const CLASSES = ["أولى ابتدائي", "ثانية ابتدائي", "ثالثة ابتدائي", "رابعة ابتدائي", "خامسة ابتدائي", "سادسة ابتدائي", "أولى إعدادي", "ثانية إعدادي", "ثالثة إعدادي", "أولى ثانوي", "ثانية ثانوي", "ثالثة ثانوي"];
         const MASTER_PASSWORD = "1427";
         
-        // تهيئة Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyA4wKyQwVJv7GbJoO6ZoDW4McE67QVkdBc",
             authDomain: "sunday-school-system-71e0a.firebaseapp.com",
@@ -73,11 +47,13 @@
         // تهيئة Firebase
         let db;
         try {
-            firebase.initializeApp(firebaseConfig);
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
             db = firebase.firestore();
-            console.log("✅ Firebase connected successfully");
-        } catch (error) {
-            console.error("❌ Firebase initialization error:", error);
+            console.log("✅ Firebase connected");
+        } catch(e) {
+            console.error("Firebase error:", e);
         }
         
         const App = () => {
@@ -97,398 +73,149 @@
             const [newStudent, setNewStudent] = useState({ name: "", phone: "", parentPhone: "", address: "" });
             const [selectedStudents, setSelectedStudents] = useState([]);
             
-            // تحميل البيانات من Firebase
             useEffect(() => {
-                if (!loggedIn) return;
-                
+                if (!loggedIn || !db) return;
                 setLoading(true);
                 
-                // تحميل المخدومين
-                const unsubscribeStudents = db.collection("students")
-                    .onSnapshot((snapshot) => {
-                        const studentsData = [];
-                        snapshot.forEach((doc) => {
-                            studentsData.push({ id: doc.id, ...doc.data() });
-                        });
-                        setStudents(studentsData);
-                        setLoading(false);
-                    }, (error) => {
-                        console.error("Error loading students:", error);
-                        setError("خطأ في تحميل البيانات: " + error.message);
-                        setLoading(false);
-                    });
+                const unsubscribeStudents = db.collection("students").onSnapshot((snapshot) => {
+                    const data = [];
+                    snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
+                    setStudents(data);
+                    setLoading(false);
+                }, (err) => { console.error(err); setError("خطأ في الاتصال"); setLoading(false); });
                 
-                // تحميل الخدام
-                const unsubscribeServants = db.collection("servants")
-                    .onSnapshot((snapshot) => {
-                        const servantsData = [];
-                        snapshot.forEach((doc) => {
-                            servantsData.push({ id: doc.id, ...doc.data() });
-                        });
-                        setServants(servantsData);
-                    });
+                const unsubscribeServants = db.collection("servants").onSnapshot((snapshot) => {
+                    const data = [];
+                    snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
+                    setServants(data);
+                });
                 
-                // تحميل النشاطات
-                const unsubscribeActivities = db.collection("activities")
-                    .orderBy("time", "desc")
-                    .limit(100)
-                    .onSnapshot((snapshot) => {
-                        const activitiesData = [];
-                        snapshot.forEach((doc) => {
-                            activitiesData.push({ id: doc.id, ...doc.data() });
-                        });
-                        setActivities(activitiesData);
-                    });
+                const unsubscribeActivities = db.collection("activities").orderBy("time", "desc").limit(100).onSnapshot((snapshot) => {
+                    const data = [];
+                    snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
+                    setActivities(data);
+                });
                 
-                return () => {
-                    unsubscribeStudents();
-                    unsubscribeServants();
-                    unsubscribeActivities();
-                };
+                return () => { unsubscribeStudents(); unsubscribeServants(); unsubscribeActivities(); };
             }, [loggedIn]);
             
             const addActivity = async (action) => {
-                try {
-                    await db.collection("activities").add({
-                        servant: servantName,
-                        action: action,
-                        time: Date.now(),
-                        timeStr: new Date().toLocaleString('ar-EG')
-                    });
-                } catch (error) {
-                    console.error("Error adding activity:", error);
-                }
+                try { await db.collection("activities").add({ servant: servantName, action, time: Date.now(), timeStr: new Date().toLocaleString('ar-EG') }); } catch(e) { console.error(e); }
             };
             
             const handleLogin = async () => {
-                if (!servantName.trim()) {
-                    setError("الرجاء إدخال اسم الخادم");
-                    return;
-                }
-                if (password !== MASTER_PASSWORD) {
-                    setError("كلمة المرور غير صحيحة");
-                    return;
-                }
+                if (!servantName.trim()) { setError("الرجاء إدخال اسم الخادم"); return; }
+                if (password !== MASTER_PASSWORD) { setError("كلمة المرور غير صحيحة"); return; }
+                if (!db) { setError("قاعدة البيانات غير جاهزة"); return; }
                 
                 try {
-                    // البحث عن الخادم
-                    const snapshot = await db.collection("servants")
-                        .where("name", "==", servantName)
-                        .get();
-                    
+                    const snapshot = await db.collection("servants").where("name", "==", servantName).get();
                     if (snapshot.empty) {
-                        // إضافة خادم جديد
-                        await db.collection("servants").add({
-                            name: servantName,
-                            firstLogin: new Date().toLocaleString('ar-EG'),
-                            firstLoginTime: Date.now(),
-                            lastLogin: new Date().toLocaleString('ar-EG'),
-                            lastLoginTime: Date.now()
-                        });
+                        await db.collection("servants").add({ name: servantName, firstLogin: new Date().toLocaleString('ar-EG'), firstLoginTime: Date.now(), lastLogin: new Date().toLocaleString('ar-EG'), lastLoginTime: Date.now() });
                         await addActivity(`خادم جديد: ${servantName} دخل النظام`);
                     } else {
-                        // تحديث آخر دخول
-                        const docId = snapshot.docs[0].id;
-                        await db.collection("servants").doc(docId).update({
-                            lastLogin: new Date().toLocaleString('ar-EG'),
-                            lastLoginTime: Date.now()
-                        });
+                        await db.collection("servants").doc(snapshot.docs[0].id).update({ lastLogin: new Date().toLocaleString('ar-EG'), lastLoginTime: Date.now() });
                         await addActivity(`${servantName} دخل إلى النظام`);
                     }
-                    
                     setLoggedIn(true);
                     setError("");
-                } catch (error) {
-                    console.error("Login error:", error);
-                    setError("حدث خطأ في الاتصال بقاعدة البيانات: " + error.message);
+                } catch(e) {
+                    console.error(e);
+                    setError("خطأ: " + e.message);
                 }
             };
             
-            const handleLogout = async () => {
-                await addActivity(`${servantName} خرج من النظام`);
-                setLoggedIn(false);
-                setServantName("");
-                setPassword("");
-            };
+            const handleLogout = async () => { await addActivity(`${servantName} خرج من النظام`); setLoggedIn(false); setServantName(""); setPassword(""); };
             
             const addStudent = async () => {
-                if (!newStudent.name || !newStudent.phone) {
-                    alert("الاسم والتليفون مطلوبين");
-                    return;
-                }
-                
+                if (!newStudent.name || !newStudent.phone) { alert("الاسم والتليفون مطلوبين"); return; }
                 try {
-                    await db.collection("students").add({
-                        name: newStudent.name,
-                        phone: newStudent.phone,
-                        parentPhone: newStudent.parentPhone || "",
-                        address: newStudent.address || "",
-                        class: selectedClass,
-                        points: 0,
-                        attendance: {},
-                        addedBy: servantName,
-                        addedDate: new Date().toLocaleString('ar-EG'),
-                        addedTime: Date.now()
-                    });
+                    await db.collection("students").add({ name: newStudent.name, phone: newStudent.phone, parentPhone: newStudent.parentPhone || "", address: newStudent.address || "", class: selectedClass, points: 0, attendance: {}, addedBy: servantName, addedDate: new Date().toLocaleString('ar-EG'), addedTime: Date.now() });
                     await addActivity(`أضاف ${servantName} مخدوم جديد: ${newStudent.name} - فصل ${selectedClass}`);
                     setNewStudent({ name: "", phone: "", parentPhone: "", address: "" });
                     setShowAddStudent(false);
-                } catch (error) {
-                    console.error("Error adding student:", error);
-                    alert("حدث خطأ في إضافة الطالب");
-                }
+                } catch(e) { alert("حدث خطأ"); }
             };
             
             const updateAttendance = async (studentIds, status) => {
                 try {
                     const batch = db.batch();
-                    
                     for (const studentId of studentIds) {
-                        const studentRef = db.collection("students").doc(studentId);
                         const student = students.find(s => s.id === studentId);
                         if (student) {
-                            const updatedAttendance = {
-                                ...(student.attendance || {}),
-                                [selectedDate]: status
-                            };
-                            batch.update(studentRef, { attendance: updatedAttendance });
+                            const updatedAttendance = { ...(student.attendance || {}), [selectedDate]: status };
+                            batch.update(db.collection("students").doc(studentId), { attendance: updatedAttendance });
                         }
                     }
-                    
                     await batch.commit();
-                    await addActivity(`${servantName} سجل حضور ${studentIds.length} مخدوم في ${selectedDate} - ${status ? "حاضر" : "غائب"}`);
+                    await addActivity(`${servantName} سجل حضور ${studentIds.length} مخدوم`);
                     setSelectedStudents([]);
-                } catch (error) {
-                    console.error("Error updating attendance:", error);
-                    alert("حدث خطأ في تسجيل الحضور");
-                }
+                } catch(e) { alert("حدث خطأ"); }
             };
             
             const addPoints = async (studentId, studentName) => {
                 try {
-                    const studentRef = db.collection("students").doc(studentId);
                     const student = students.find(s => s.id === studentId);
-                    const newPoints = (student?.points || 0) + 5;
-                    await studentRef.update({ points: newPoints });
+                    await db.collection("students").doc(studentId).update({ points: (student?.points || 0) + 5 });
                     await addActivity(`${servantName} أضاف 5 نقاط لـ ${studentName}`);
-                } catch (error) {
-                    console.error("Error adding points:", error);
-                    alert("حدث خطأ في إضافة النقاط");
-                }
+                } catch(e) { alert("حدث خطأ"); }
             };
             
             const deleteStudent = async (studentId, studentName) => {
                 if (confirm(`هل تريد حذف ${studentName}؟`)) {
-                    try {
-                        await db.collection("students").doc(studentId).delete();
-                        await addActivity(`${servantName} حذف مخدوم: ${studentName}`);
-                    } catch (error) {
-                        console.error("Error deleting student:", error);
-                        alert("حدث خطأ في حذف الطالب");
-                    }
+                    try { await db.collection("students").doc(studentId).delete(); await addActivity(`${servantName} حذف مخدوم: ${studentName}`); } catch(e) { alert("حدث خطأ"); }
                 }
             };
             
             const getAttendanceRate = (student) => {
                 const records = Object.values(student.attendance || {});
                 if (records.length === 0) return 0;
-                const present = records.filter(r => r === true).length;
-                return Math.round((present / records.length) * 100);
+                return Math.round((records.filter(r => r === true).length / records.length) * 100);
             };
             
-            const getBadge = (rate) => {
-                if (rate >= 90) return "🏆 ممتاز";
-                if (rate >= 70) return "⭐ جيد جداً";
-                if (rate >= 50) return "👍 جيد";
-                return "⚠️ يحتاج متابعة";
-            };
-            
-            const filteredStudents = students.filter(s => 
-                s.class === selectedClass && 
-                s.name && s.name.includes(search)
-            );
-            
+            const filteredStudents = students.filter(s => s.class === selectedClass && s.name?.includes(search));
             const todayAttendance = filteredStudents.filter(s => s.attendance?.[selectedDate] === true).length;
             const totalPoints = filteredStudents.reduce((sum, s) => sum + (s.points || 0), 0);
             
-            // شاشة التحميل
-            if (loading && loggedIn) {
-                return (
-                    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                        <div className="text-center">
-                            <div className="loading mx-auto mb-4"></div>
-                            <p className="text-gray-600">جاري تحميل البيانات...</p>
-                        </div>
-                    </div>
-                );
+            if (!db) {
+                return <div className="min-h-screen flex items-center justify-center"><div className="text-center text-red-600"><div className="text-4xl mb-4">⚠️</div><h2 className="text-xl">خطأ في اتصال قاعدة البيانات</h2><p className="text-sm">تأكد من إعدادات Firebase</p></div></div>;
             }
             
-            // شاشة تسجيل الدخول
+            if (loading && loggedIn) {
+                return <div className="min-h-screen flex items-center justify-center"><div className="text-center"><div className="loading mx-auto mb-4"></div><p>جاري التحميل...</p></div></div>;
+            }
+            
             if (!loggedIn) {
                 return (
                     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-600 to-purple-600 p-4">
                         <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-                            <div className="text-center mb-8">
-                                <div className="text-6xl mb-3">⛪</div>
-                                <h1 className="text-2xl font-bold text-gray-800">نظام مدارس الأحد</h1>
-                                <p className="text-gray-600">جمعيه مار بولس الرسول</p>
-                                <p className="text-sm text-green-600 mt-2">✓ بيانات مشتركة لجميع الخدام</p>
-                            </div>
-                            
-                            {error && (
-                                <div className="bg-red-100 text-red-700 p-3 rounded-xl mb-4 text-center text-sm">
-                                    {error}
-                                </div>
-                            )}
-                            
+                            <div className="text-center mb-8"><div className="text-6xl mb-3">⛪</div><h1 className="text-2xl font-bold">نظام مدارس الأحد</h1><p className="text-gray-600">كنيسه مار بولس الرسول</p><p className="text-sm text-green-600 mt-2">✓ بيانات مشتركة لجميع الخدام</p></div>
+                            {error && <div className="bg-red-100 text-red-700 p-3 rounded-xl mb-4 text-center">{error}</div>}
                             <div className="space-y-4">
-                                <div>
-                                    <label className="block text-gray-700 mb-2">اسم الخادم</label>
-                                    <input
-                                        type="text"
-                                        className="w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                        placeholder="أدخل اسمك"
-                                        value={servantName}
-                                        onChange={(e) => setServantName(e.target.value)}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-gray-700 mb-2">كلمة المرور</label>
-                                    <input
-                                        type="password"
-                                        className="w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                        placeholder="كلمة المرور"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                                    />
-                                </div>
-                                <button
-                                    onClick={handleLogin}
-                                    className="w-full bg-indigo-600 text-white p-3 rounded-xl font-semibold hover:bg-indigo-700 transition"
-                                >
-                                    دخول
-                                </button>
-                            </div>
-                            
-                            <div className="mt-6 text-center text-xs text-gray-500">
-                                🔗 جميع الخدام يشتركون في نفس البيانات بشكل فوري
+                                <input type="text" className="w-full p-3 border rounded-xl" placeholder="اسم الخادم" value={servantName} onChange={e => setServantName(e.target.value)} />
+                                <input type="password" className="w-full p-3 border rounded-xl" placeholder="كلمة المرور" value={password} onChange={e => setPassword(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleLogin()} />
+                                <button onClick={handleLogin} className="w-full bg-indigo-600 text-white p-3 rounded-xl font-semibold hover:bg-indigo-700">دخول</button>
                             </div>
                         </div>
                     </div>
                 );
             }
             
-            // الواجهة الرئيسية
             return (
                 <div className="min-h-screen bg-gray-50" dir="rtl">
                     <div className="bg-white shadow-sm px-6 py-4 flex justify-between items-center">
-                        <div>
-                            <h1 className="text-xl font-bold text-indigo-600">نظام مدارس الأحد</h1>
-                            <p className="text-sm text-gray-500">جمعيه مار بولس - بيانات مشتركة</p>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <div className="text-left">
-                                <p className="font-semibold">{servantName}</p>
-                                <p className="text-xs text-gray-500">خادم</p>
-                            </div>
-                            <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-600">🚪 خروج</button>
-                        </div>
+                        <div><h1 className="text-xl font-bold text-indigo-600">نظام مدارس الأحد</h1><p className="text-sm text-gray-500">جمعيه مار بولس</p></div>
+                        <div className="flex items-center gap-4"><div className="text-left"><p className="font-semibold">{servantName}</p><p className="text-xs text-gray-500">خادم</p></div><button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg">خروج</button></div>
                     </div>
-                    
-                    <div className="border-b bg-white px-6">
-                        <div className="flex gap-2 overflow-x-auto">
-                            {[
-                                { id: "dashboard", label: "📊 لوحة التحكم" },
-                                { id: "students", label: "👥 المخدومين" },
-                                { id: "attendance", label: "📅 الحضور" },
-                                { id: "reports", label: "📈 التقارير" },
-                                { id: "servants", label: "🙏 الخدام" },
-                                { id: "activities", label: "📋 سجل النشاط" }
-                            ].map(tab => (
-                                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 py-3 font-semibold transition ${activeTab === tab.id ? "border-b-2 border-indigo-600 text-indigo-600" : "text-gray-500 hover:text-gray-700"}`}>
-                                    {tab.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    
+                    <div className="border-b bg-white px-6"><div className="flex gap-2 overflow-x-auto">{[{id:"dashboard",label:"📊 الرئيسية"},{id:"students",label:"👥 المخدومين"},{id:"attendance",label:"📅 الحضور"},{id:"reports",label:"📈 التقارير"},{id:"servants",label:"🙏 الخدام"}].map(tab=><button key={tab.id} onClick={()=>setActiveTab(tab.id)} className={`px-4 py-3 font-semibold ${activeTab===tab.id?"border-b-2 border-indigo-600 text-indigo-600":"text-gray-500"}`}>{tab.label}</button>)}</div></div>
                     <div className="p-6">
-                        {activeTab === "dashboard" && (
-                            <div className="space-y-6">
-                                <h2 className="text-2xl font-bold text-gray-800">لوحة التحكم</h2>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-6"><div className="text-3xl mb-2">👥</div><div className="text-2xl font-bold">{filteredStudents.length}</div><div className="text-sm">إجمالي المخدومين</div></div>
-                                    <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl p-6"><div className="text-3xl mb-2">✅</div><div className="text-2xl font-bold">{todayAttendance}</div><div className="text-sm">الحضور اليوم</div></div>
-                                    <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 text-white rounded-xl p-6"><div className="text-3xl mb-2">🏆</div><div className="text-2xl font-bold">{totalPoints}</div><div className="text-sm">إجمالي النقاط</div></div>
-                                    <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-xl p-6"><div className="text-3xl mb-2">📊</div><div className="text-2xl font-bold">{servants.length}</div><div className="text-sm">عدد الخدام</div></div>
-                                </div>
-                                <div className="bg-white rounded-xl shadow-sm p-6">
-                                    <h3 className="font-bold text-lg mb-4">🏆 أفضل المخدومين</h3>
-                                    {[...filteredStudents].sort((a,b)=>(b.points||0)-(a.points||0)).slice(0,5).map((s,i)=>(
-                                        <div key={s.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mb-2"><div><span className="inline-block w-6 text-center font-bold">{i+1}</span> {s.name}</div><span className="text-yellow-600 font-bold">{s.points||0} نقطة</span></div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                        
-                        {activeTab === "students" && (
-                            <div>
-                                <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold">المخدومين</h2><button onClick={()=>setShowAddStudent(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg">➕ إضافة مخدوم</button></div>
-                                <div className="bg-white rounded-xl shadow-sm p-6">
-                                    <div className="flex gap-4 mb-4"><select className="p-2 border rounded-lg flex-1" value={selectedClass} onChange={e=>setSelectedClass(e.target.value)}>{CLASSES.map(c=><option key={c}>{c}</option>)}</select><input type="text" className="p-2 border rounded-lg flex-1" placeholder="بحث..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full">
-                                            <thead className="bg-gray-50"><tr><th className="p-3 text-right">الاسم</th><th className="p-3 text-right">التليفون</th><th className="p-3 text-right">النقاط</th><th className="p-3 text-right">نسبة الحضور</th><th className="p-3 text-right">إجراءات</th></tr></thead>
-                                            <tbody>{filteredStudents.map(s=>{
-                                                const rate = getAttendanceRate(s);
-                                                return <tr key={s.id} className="border-b"><td className="p-3">{s.name}</td><td className="p-3">{s.phone}</td><td className="p-3"><span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">{s.points||0}</span></td><td className="p-3"><div className="flex items-center gap-2"><div className="flex-1 bg-gray-200 rounded-full h-2"><div className="bg-green-500 rounded-full h-2" style={{width:`${rate}%`}}/></div><span>{rate}%</span></div></td><td className="p-3"><button onClick={()=>addPoints(s.id,s.name)} className="bg-yellow-500 text-white px-2 py-1 rounded text-sm ml-2">➕ نقاط</button><button onClick={()=>deleteStudent(s.id,s.name)} className="bg-red-500 text-white px-2 py-1 rounded text-sm">🗑️ حذف</button></td></tr>
-                                            })}</tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        
-                        {activeTab === "attendance" && (
-                            <div>
-                                <h2 className="text-2xl font-bold mb-6">تسجيل الحضور</h2>
-                                <div className="bg-white rounded-xl shadow-sm p-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                                        <select className="p-2 border rounded-lg" value={selectedClass} onChange={e=>setSelectedClass(e.target.value)}>{CLASSES.map(c=><option key={c}>{c}</option>)}</select>
-                                        <input type="date" className="p-2 border rounded-lg" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)}/>
-                                        <div className="flex gap-2"><button onClick={()=>setSelectedStudents(filteredStudents.map(s=>s.id))} className="flex-1 bg-gray-800 text-white p-2 rounded-lg">تحديد الكل</button><button onClick={()=>setSelectedStudents([])} className="flex-1 bg-gray-400 text-white p-2 rounded-lg">إلغاء</button></div>
-                                    </div>
-                                    <div className="flex gap-3 mb-6"><button onClick={()=>updateAttendance(selectedStudents,true)} className="flex-1 bg-green-600 text-white p-3 rounded-lg font-semibold">✅ حاضر</button><button onClick={()=>updateAttendance(selectedStudents,false)} className="flex-1 bg-red-600 text-white p-3 rounded-lg font-semibold">❌ غائب</button></div>
-                                    {filteredStudents.map(s=>{
-                                        const isPresent = s.attendance?.[selectedDate];
-                                        return <div key={s.id} onClick={()=>setSelectedStudents(prev=>prev.includes(s.id)?prev.filter(id=>id!==s.id):[...prev,s.id])} className={`flex items-center justify-between p-3 rounded-lg border-2 cursor-pointer mb-2 ${selectedStudents.includes(s.id)?"border-indigo-500 bg-indigo-50":"border-gray-200"}`}><div><input type="checkbox" checked={selectedStudents.includes(s.id)} onChange={()=>{}} className="ml-3"/><span className="font-semibold">{s.name}</span></div>{isPresent!==undefined && <span className={`px-3 py-1 rounded-full text-sm ${isPresent?"bg-green-100 text-green-700":"bg-red-100 text-red-700"}`}>{isPresent?"✅ حاضر":"❌ غائب"}</span>}</div>
-                                    })}
-                                </div>
-                            </div>
-                        )}
-                        
-                        {activeTab === "reports" && (
-                            <div>
-                                <h2 className="text-2xl font-bold mb-6">التقارير</h2>
-                                <div className="bg-white rounded-xl shadow-sm p-6">
-                                    <select className="p-2 border rounded-lg w-full mb-4" value={selectedClass} onChange={e=>setSelectedClass(e.target.value)}>{CLASSES.map(c=><option key={c}>{c}</option>)}</select>
-                                    <table className="w-full"><thead className="bg-gray-50"><tr><th className="p-3">#</th><th className="p-3">الاسم</th><th className="p-3">الهاتف</th><th className="p-3">نسبة الحضور</th><th className="p-3">النقاط</th><th className="p-3">التقييم</th></tr></thead>
-                                    <tbody>{filteredStudents.map((s,i)=><tr key={s.id} className="border-b"><td className="p-3">{i+1}</td><td className="p-3 font-semibold">{s.name}</td><td className="p-3">{s.phone}</td><td className="p-3">{getAttendanceRate(s)}%</td><td className="p-3">{s.points||0}</td><td className="p-3">{getBadge(getAttendanceRate(s))}</td></tr>)}</tbody></table>
-                                </div>
-                            </div>
-                        )}
-                        
-                        {activeTab === "servants" && (
-                            <div><h2 className="text-2xl font-bold mb-6">الخدام</h2><div className="bg-white rounded-xl shadow-sm p-6"><div className="grid grid-cols-1 md:grid-cols-2 gap-4">{servants.map(s=><div key={s.id} className="p-4 bg-gray-50 rounded-lg"><div className="flex items-center gap-3 mb-2"><div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-xl">👤</div><div><p className="font-semibold">{s.name}</p><p className="text-xs text-gray-500">خادم</p></div></div><div className="text-xs text-gray-500"><p>📅 أول دخول: {s.firstLogin}</p><p>🕐 آخر دخول: {s.lastLogin}</p></div></div>)}</div></div></div>
-                        )}
-                        
-                        {activeTab === "activities" && (
-                            <div><h2 className="text-2xl font-bold mb-6">سجل النشاط</h2><div className="bg-white rounded-xl shadow-sm p-6">{activities.map(a=><div key={a.id} className="p-2 border-b hover:bg-gray-50"><div className="flex justify-between"><span><span className="font-semibold text-indigo-600">{a.servant}</span>: {a.action}</span><span className="text-xs text-gray-400">{a.timeStr}</span></div></div>)}</div></div>
-                        )}
+                        {activeTab === "dashboard" && <div><h2 className="text-2xl font-bold mb-4">لوحة التحكم</h2><div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6"><div className="bg-blue-500 text-white p-6 rounded-xl"><div className="text-3xl">👥</div><div className="text-2xl font-bold">{filteredStudents.length}</div><div>المخدومين</div></div><div className="bg-green-500 text-white p-6 rounded-xl"><div className="text-3xl">✅</div><div className="text-2xl font-bold">{todayAttendance}</div><div>الحضور اليوم</div></div><div className="bg-yellow-500 text-white p-6 rounded-xl"><div className="text-3xl">🏆</div><div className="text-2xl font-bold">{totalPoints}</div><div>النقاط</div></div><div className="bg-purple-500 text-white p-6 rounded-xl"><div className="text-3xl">🙏</div><div className="text-2xl font-bold">{servants.length}</div><div>الخدام</div></div></div></div>}
+                        {activeTab === "students" && <div><div className="flex justify-between mb-4"><h2 className="text-2xl font-bold">المخدومين</h2><button onClick={()=>setShowAddStudent(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg">➕ إضافة</button></div><div className="bg-white rounded-xl p-6"><select className="border p-2 rounded-lg mb-4 w-full" value={selectedClass} onChange={e=>setSelectedClass(e.target.value)}>{CLASSES.map(c=><option>{c}</option>)}</select><input type="text" placeholder="بحث..." className="border p-2 rounded-lg w-full mb-4" value={search} onChange={e=>setSearch(e.target.value)}/>{filteredStudents.map(s=><div key={s.id} className="flex justify-between items-center p-3 border-b"><div><span className="font-semibold">{s.name}</span><div className="text-sm text-gray-500">{s.phone}</div></div><div><button onClick={()=>addPoints(s.id,s.name)} className="bg-yellow-500 text-white px-3 py-1 rounded ml-2">+5</button><button onClick={()=>deleteStudent(s.id,s.name)} className="bg-red-500 text-white px-3 py-1 rounded">حذف</button></div></div>)}</div></div>}
+                        {activeTab === "attendance" && <div><h2 className="text-2xl font-bold mb-4">تسجيل الحضور</h2><div className="bg-white rounded-xl p-6"><select className="border p-2 rounded-lg mb-4 w-full" value={selectedClass} onChange={e=>setSelectedClass(e.target.value)}>{CLASSES.map(c=><option>{c}</option>)}</select><input type="date" className="border p-2 rounded-lg mb-4 w-full" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)}/><div className="flex gap-2 mb-4"><button onClick={()=>setSelectedStudents(filteredStudents.map(s=>s.id))} className="bg-gray-700 text-white px-4 py-2 rounded-lg">تحديد الكل</button><button onClick={()=>updateAttendance(selectedStudents,true)} className="flex-1 bg-green-600 text-white py-2 rounded-lg">حاضر</button><button onClick={()=>updateAttendance(selectedStudents,false)} className="flex-1 bg-red-600 text-white py-2 rounded-lg">غائب</button></div>{filteredStudents.map(s=><div key={s.id} onClick={()=>setSelectedStudents(prev=>prev.includes(s.id)?prev.filter(i=>i!==s.id):[...prev,s.id])} className={`p-3 border rounded-lg mb-2 cursor-pointer ${selectedStudents.includes(s.id)?"bg-indigo-50 border-indigo-500":"border-gray-200"}`}><span className="font-semibold">{s.name}</span> {s.attendance?.[selectedDate]!==undefined && <span className={`mr-2 text-sm ${s.attendance?.[selectedDate]?"text-green-600":"text-red-600"}`}>{s.attendance?.[selectedDate]?"✅ حاضر":"❌ غائب"}</span>}</div>)}</div></div>}
+                        {activeTab === "reports" && <div><h2 className="text-2xl font-bold mb-4">التقارير</h2><div className="bg-white rounded-xl p-6"><select className="border p-2 rounded-lg w-full mb-4" value={selectedClass} onChange={e=>setSelectedClass(e.target.value)}>{CLASSES.map(c=><option>{c}</option>)}</select>{filteredStudents.map((s,i)=><div key={s.id} className="flex justify-between items-center p-3 border-b"><div><span className="font-bold">{i+1}.</span> {s.name}</div><div><span className="text-sm">نسبة الحضور: {getAttendanceRate(s)}% | نقاط: {s.points||0}</span></div></div>)}</div></div>}
+                        {activeTab === "servants" && <div><h2 className="text-2xl font-bold mb-4">الخدام</h2><div className="bg-white rounded-xl p-6">{servants.map(s=><div key={s.id} className="p-3 border-b"><div className="font-semibold">{s.name}</div><div className="text-sm text-gray-500">آخر دخول: {s.lastLogin}</div></div>)}</div></div>}
                     </div>
-                    
-                    {showAddStudent && <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-xl p-6 w-full max-w-md"><h3 className="text-xl font-bold mb-4">إضافة مخدوم جديد</h3><input type="text" className="w-full p-2 border rounded-lg mb-3" placeholder="الاسم *" value={newStudent.name} onChange={e=>setNewStudent({...newStudent,name:e.target.value})}/><input type="tel" className="w-full p-2 border rounded-lg mb-3" placeholder="رقم التليفون *" value={newStudent.phone} onChange={e=>setNewStudent({...newStudent,phone:e.target.value})}/><input type="tel" className="w-full p-2 border rounded-lg mb-3" placeholder="تليفون ولي الأمر" value={newStudent.parentPhone} onChange={e=>setNewStudent({...newStudent,parentPhone:e.target.value})}/><input type="text" className="w-full p-2 border rounded-lg mb-3" placeholder="العنوان" value={newStudent.address} onChange={e=>setNewStudent({...newStudent,address:e.target.value})}/><div className="flex gap-3"><button onClick={addStudent} className="flex-1 bg-indigo-600 text-white p-2 rounded-lg">إضافة</button><button onClick={()=>setShowAddStudent(false)} className="flex-1 bg-gray-300 p-2 rounded-lg">إلغاء</button></div></div></div>}
+                    {showAddStudent && <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4"><div className="bg-white rounded-xl p-6 w-full max-w-md"><h3 className="text-xl font-bold mb-4">إضافة مخدوم</h3><input type="text" placeholder="الاسم *" className="w-full p-2 border rounded-lg mb-3" value={newStudent.name} onChange={e=>setNewStudent({...newStudent,name:e.target.value})}/><input type="tel" placeholder="التليفون *" className="w-full p-2 border rounded-lg mb-3" value={newStudent.phone} onChange={e=>setNewStudent({...newStudent,phone:e.target.value})}/><input type="tel" placeholder="تليفون ولي الأمر" className="w-full p-2 border rounded-lg mb-3" value={newStudent.parentPhone} onChange={e=>setNewStudent({...newStudent,parentPhone:e.target.value})}/><input type="text" placeholder="العنوان" className="w-full p-2 border rounded-lg mb-3" value={newStudent.address} onChange={e=>setNewStudent({...newStudent,address:e.target.value})}/><div className="flex gap-3"><button onClick={addStudent} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg">إضافة</button><button onClick={()=>setShowAddStudent(false)} className="flex-1 bg-gray-300 py-2 rounded-lg">إلغاء</button></div></div></div>}
                 </div>
             );
         };
