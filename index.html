@@ -2,34 +2,75 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>نظام مدارس الأحد - جمعية مار بولس | أعياد الميلاد</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>مار بولس | مدارس الأحد - إعدادي (إصلاح استيراد Excel)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18.2.0/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js"></script>
-    
-    <!-- Babel for JSX -->
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-    
-    <!-- Flatpickr for date picker (optional but nice) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <!-- SheetJS -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
     <style>
-        * { font-family: 'Tajawal', system-ui, sans-serif; }
-        .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid #f3f3f3; border-top: 3px solid #6366f1; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .birthday-badge { background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: bold; display: inline-flex; align-items: center; gap: 0.25rem; }
-        .upcoming-birthday { background-color: #fff3e0; border-right: 4px solid #f59e0b; transition: all 0.2s; }
-        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
+        * { font-family: 'Tajawal', sans-serif; margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        .gradient-bg {
+            background: linear-gradient(145deg, #f8f4ff 0%, #f0eaff 100%);
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(2px);
+            border-radius: 28px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
+            border: 1px solid rgba(139, 92, 246, 0.08);
+            transition: all 0.2s ease;
+        }
+        
+        .bottom-nav {
+            background: rgba(255, 255, 255, 0.96);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(139, 92, 246, 0.15);
+        }
+        
+        .fab-btn {
+            position: fixed;
+            bottom: 85px;
+            left: 20px;
+            background: linear-gradient(135deg, #7c3aed, #6d28d9);
+            width: 58px;
+            height: 58px;
+            border-radius: 29px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 20px rgba(124, 58, 237, 0.35);
+            z-index: 30;
+            transition: 0.2s;
+            cursor: pointer;
+        }
+        
+        .fab-btn:active { transform: scale(0.92); }
+        
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .animate-fade-up {
+            animation: fadeUp 0.25s ease-out;
+        }
+        
+        .hide-scroll::-webkit-scrollbar { width: 4px; }
+        .hide-scroll::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        .hide-scroll::-webkit-scrollbar-thumb { background: #c084fc; border-radius: 10px; }
     </style>
 </head>
 <body>
@@ -38,66 +79,119 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
         
-        const CLASSES = ["أولى ابتدائي", "ثانية ابتدائي", "ثالثة ابتدائي", "رابعة ابتدائي", "خامسة ابتدائي", "سادسة ابتدائي", "أولى إعدادي", "ثانية إعدادي", "ثالثة إعدادي", "أولى ثانوي", "ثانية ثانوي", "ثالثة ثانوي"];
+        // الصفوف فقط: إعدادي (ثلاثة صفوف فقط)
+        const CLASSES = ["أولى إعدادي", "ثانية إعدادي", "ثالثة إعدادي"];
         const MASTER_PASSWORD = "1427";
         
-        const firebaseConfig = {
-            apiKey: "AIzaSyA4wKyQwVJv7GbJoO6ZoDW4McE67QVkdBc",
-            authDomain: "sunday-school-system-71e0a.firebaseapp.com",
-            projectId: "sunday-school-system-71e0a",
-            storageBucket: "sunday-school-system-71e0a.firebasestorage.app",
-            messagingSenderId: "725017954112",
-            appId: "1:725017954112:web:a4ab42bdc35d2b1b2edca5",
-            measurementId: "G-2XH12G7D5P"
+        // Local storage keys
+        const STORAGE_KEYS = {
+            STUDENTS: "mar_boulus_students_v4_fixed",
+            SERVANTS: "mar_boulus_servants_v4",
+            ACTIVITIES: "mar_boulus_activities_v4"
         };
         
-        let db;
-        try {
-            if (!firebase.apps.length) {
-                firebase.initializeApp(firebaseConfig);
-            }
-            db = firebase.firestore();
-            console.log("✅ Firebase connected");
-        } catch(e) {
-            console.error("Firebase error:", e);
-        }
+        const loadData = (key, def=[]) => { try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : def; } catch(e) { return def; } };
+        const saveData = (key, data) => { try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {} };
+        const genId = () => Date.now() + '-' + Math.random().toString(36).substr(2, 8);
         
-        // helper: format birthday for display (DD/MM)
-        const formatBirthday = (dateStr) => {
-            if (!dateStr) return "غير محدد";
-            const parts = dateStr.split('-');
-            if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
-            return dateStr;
-        };
+        const formatBirthday = (dateStr) => { if(!dateStr) return "—"; let p = dateStr.split('-'); if(p.length===3) return `${p[2]}/${p[1]}`; return dateStr; };
         
-        // get upcoming birthdays within next 30 days
-        const getUpcomingBirthdays = (studentsList) => {
-            const today = new Date();
-            const currentYear = today.getFullYear();
+        const getUpcomingBirthdays = (students) => {
+            const today = new Date(); const year = today.getFullYear();
             const upcoming = [];
-            
-            studentsList.forEach(student => {
-                if (!student.birthday) return;
-                const parts = student.birthday.split('-'); // YYYY-MM-DD
-                if (parts.length !== 3) return;
-                const birthMonth = parseInt(parts[1], 10);
-                const birthDay = parseInt(parts[2], 10);
-                let nextBirthday = new Date(currentYear, birthMonth - 1, birthDay);
-                
-                if (nextBirthday < today) {
-                    nextBirthday = new Date(currentYear + 1, birthMonth - 1, birthDay);
-                }
-                const diffDays = Math.ceil((nextBirthday - today) / (1000 * 60 * 60 * 24));
-                if (diffDays >= 0 && diffDays <= 30) {
-                    upcoming.push({
-                        ...student,
-                        nextBirthdayDate: nextBirthday,
-                        daysLeft: diffDays,
-                        birthdayDisplay: `${birthDay}/${birthMonth}`
-                    });
-                }
+            students.forEach(s => {
+                if(!s.birthday) return;
+                let parts = s.birthday.split('-');
+                if(parts.length!==3) return;
+                let m = parseInt(parts[1]), d = parseInt(parts[2]);
+                let next = new Date(year, m-1, d);
+                if(next < today) next = new Date(year+1, m-1, d);
+                let diff = Math.ceil((next - today) / (1000*3600*24));
+                if(diff>=0 && diff<=30) upcoming.push({...s, daysLeft: diff, display: `${d}/${m}`});
             });
             return upcoming.sort((a,b) => a.daysLeft - b.daysLeft);
+        };
+        
+        // دالة استيراد Excel متطورة: تحاول اكتشاف عمود "الصف" أو "class" إذا وُجد، وإلا تستخدم الفصل المختار يدوياً
+        const parseExcelToStudentsAdvanced = (data, manualClass, detectClassColumn = true) => {
+            const rows = XLSX.utils.sheet_to_json(data, { header: 1, defval: "" });
+            if(rows.length < 2) return { students: [], errors: [], classMapping: {} };
+            
+            const headers = rows[0].map(cell => String(cell || "").trim().toLowerCase());
+            
+            // تحديد الأعمدة الأساسية
+            const nameIdx = headers.findIndex(h => h.includes("اسم") || h === "name" || h === "الاسم");
+            const phoneIdx = headers.findIndex(h => h.includes("تليفون") || h.includes("هاتف") || h === "phone" || h === "mobile");
+            const parentIdx = headers.findIndex(h => h.includes("ولي") || h === "parent" || h.includes("والد"));
+            const addrIdx = headers.findIndex(h => h.includes("عنوان") || h === "address");
+            const birthIdx = headers.findIndex(h => h.includes("ميلاد") || h.includes("تاريخ") || h === "birthday" || h === "dob");
+            const classIdx = headers.findIndex(h => h.includes("صف") || h === "class" || h.includes("المرحلة") || h.includes("الفصل"));
+            
+            let nIdx = nameIdx !== -1 ? nameIdx : 0;
+            let pIdx = phoneIdx !== -1 ? phoneIdx : (headers.length > 1 ? 1 : -1);
+            
+            const students = [];
+            const errors = [];
+            const classMapping = {};
+            
+            // تعيين الفصول الصالحة (فقط الإعدادي)
+            const validClasses = CLASSES;
+            
+            for(let i=1; i<rows.length; i++) {
+                let row = rows[i];
+                if(!row || row.length === 0) continue;
+                let name = row[nIdx] ? String(row[nIdx]).trim() : "";
+                if(!name) continue;
+                
+                let phone = (pIdx !== -1 && row[pIdx]) ? String(row[pIdx]).trim() : "";
+                let parentPhone = (parentIdx !== -1 && row[parentIdx]) ? String(row[parentIdx]).trim() : "";
+                let address = (addrIdx !== -1 && row[addrIdx]) ? String(row[addrIdx]).trim() : "";
+                
+                // معالجة تاريخ الميلاد
+                let birthdayRaw = (birthIdx !== -1 && row[birthIdx]) ? String(row[birthIdx]).trim() : "";
+                let birthdayFmt = "";
+                if(birthdayRaw) {
+                    if(!isNaN(birthdayRaw) && birthdayRaw.length < 10 && Number(birthdayRaw) > 0) {
+                        let dateObj = XLSX.SSF.parse_date_code(Number(birthdayRaw));
+                        if(dateObj) birthdayFmt = `${dateObj.y}-${String(dateObj.m).padStart(2,'0')}-${String(dateObj.d).padStart(2,'0')}`;
+                    } else {
+                        let cleaned = birthdayRaw.replace(/\//g, '-');
+                        let seg = cleaned.split('-');
+                        if(seg.length === 3) {
+                            let yr = seg[0].length === 4 ? seg[0] : (seg[2].length === 4 ? seg[2] : new Date().getFullYear());
+                            let mon = seg[1], day = seg[0].length === 2 ? seg[0] : seg[2];
+                            if(yr.length === 4 && mon && day) birthdayFmt = `${yr}-${String(mon).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                        }
+                    }
+                }
+                
+                // تحديد الفصل: إذا وُجد عمود الصف واستخدمنا الكشف التلقائي
+                let targetClass = manualClass;
+                if(detectClassColumn && classIdx !== -1 && row[classIdx]) {
+                    let classRaw = String(row[classIdx]).trim();
+                    // محاولة مطابقة الصف مع القائمة
+                    let matchedClass = validClasses.find(c => classRaw.includes(c) || c.includes(classRaw));
+                    if(matchedClass) {
+                        targetClass = matchedClass;
+                        classMapping[classRaw] = matchedClass;
+                    } else {
+                        // إذا لم يطابق أي صف من القائمة، نستخدم اليدوي
+                        targetClass = manualClass;
+                    }
+                }
+                
+                students.push({
+                    name, phone, parentPhone, address, 
+                    birthday: birthdayFmt, 
+                    class: targetClass,  // الفصل المحدد بدقة
+                    points: 0, 
+                    attendance: {}, 
+                    addedBy: "استيراد Excel", 
+                    addedDate: new Date().toLocaleString('ar-EG')
+                });
+            }
+            
+            return { students, errors, classMapping };
         };
         
         const App = () => {
@@ -105,172 +199,177 @@
             const [servantName, setServantName] = useState("");
             const [password, setPassword] = useState("");
             const [error, setError] = useState("");
-            const [activeTab, setActiveTab] = useState("dashboard");
+            const [activeTab, setActiveTab] = useState("home");
             const [students, setStudents] = useState([]);
             const [servants, setServants] = useState([]);
-            const [activities, setActivities] = useState([]);
             const [loading, setLoading] = useState(true);
             const [selectedClass, setSelectedClass] = useState(CLASSES[0]);
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
             const [search, setSearch] = useState("");
-            const [showAddStudent, setShowAddStudent] = useState(false);
-            const [newStudent, setNewStudent] = useState({ name: "", phone: "", parentPhone: "", address: "", birthday: "" });
+            const [showAddModal, setShowAddModal] = useState(false);
+            const [showImportModal, setShowImportModal] = useState(false);
+            const [newStudent, setNewStudent] = useState({ name:"", phone:"", parentPhone:"", address:"", birthday:"" });
             const [selectedStudents, setSelectedStudents] = useState([]);
-            const [showEditModal, setShowEditModal] = useState(false);
             const [editingStudent, setEditingStudent] = useState(null);
+            const [importPreview, setImportPreview] = useState([]);
+            const [importClass, setImportClass] = useState(CLASSES[0]);
+            const [importDetectClass, setImportDetectClass] = useState(true); // اكتشاف الصف تلقائياً من العمود
+            const [showDeleteServantConfirm, setShowDeleteServantConfirm] = useState(null);
+            const [importInfo, setImportInfo] = useState("");
             
+            // تحميل البيانات
             useEffect(() => {
-                if (!loggedIn || !db) return;
-                setLoading(true);
-                
-                const unsubscribeStudents = db.collection("students").onSnapshot((snapshot) => {
-                    const data = [];
-                    snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
-                    setStudents(data);
-                    setLoading(false);
-                }, (err) => { console.error(err); setError("خطأ في الاتصال"); setLoading(false); });
-                
-                const unsubscribeServants = db.collection("servants").onSnapshot((snapshot) => {
-                    const data = [];
-                    snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
-                    setServants(data);
-                });
-                
-                const unsubscribeActivities = db.collection("activities").orderBy("time", "desc").limit(100).onSnapshot((snapshot) => {
-                    const data = [];
-                    snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
-                    setActivities(data);
-                });
-                
-                return () => { unsubscribeStudents(); unsubscribeServants(); unsubscribeActivities(); };
-            }, [loggedIn]);
+                setStudents(loadData(STORAGE_KEYS.STUDENTS, []));
+                setServants(loadData(STORAGE_KEYS.SERVANTS, []));
+                setLoading(false);
+            }, []);
             
-            const addActivity = async (action) => {
-                try { await db.collection("activities").add({ servant: servantName, action, time: Date.now(), timeStr: new Date().toLocaleString('ar-EG') }); } catch(e) { console.error(e); }
+            useEffect(() => { if(!loading) saveData(STORAGE_KEYS.STUDENTS, students); }, [students, loading]);
+            useEffect(() => { if(!loading) saveData(STORAGE_KEYS.SERVANTS, servants); }, [servants, loading]);
+            
+            const handleLogin = () => {
+                if(!servantName.trim()) { setError("✝️ الرجاء إدخال اسم الخادم"); return; }
+                if(password !== MASTER_PASSWORD) { setError("🔐 كلمة المرور غير صحيحة"); return; }
+                const exists = servants.find(s => s.name === servantName);
+                if(!exists) {
+                    setServants(prev => [...prev, { id: genId(), name: servantName, lastLogin: new Date().toLocaleString('ar-EG'), firstLogin: new Date().toLocaleString('ar-EG') }]);
+                } else {
+                    setServants(prev => prev.map(s => s.name === servantName ? { ...s, lastLogin: new Date().toLocaleString('ar-EG') } : s));
+                }
+                setLoggedIn(true);
+                setError("");
             };
             
-            const handleLogin = async () => {
-                if (!servantName.trim()) { setError("الرجاء إدخال اسم الخادم"); return; }
-                if (password !== MASTER_PASSWORD) { setError("كلمة المرور غير صحيحة"); return; }
-                if (!db) { setError("قاعدة البيانات غير جاهزة"); return; }
-                
-                try {
-                    const snapshot = await db.collection("servants").where("name", "==", servantName).get();
-                    if (snapshot.empty) {
-                        await db.collection("servants").add({ name: servantName, firstLogin: new Date().toLocaleString('ar-EG'), firstLoginTime: Date.now(), lastLogin: new Date().toLocaleString('ar-EG'), lastLoginTime: Date.now() });
-                        await addActivity(`خادم جديد: ${servantName} دخل النظام`);
-                    } else {
-                        await db.collection("servants").doc(snapshot.docs[0].id).update({ lastLogin: new Date().toLocaleString('ar-EG'), lastLoginTime: Date.now() });
-                        await addActivity(`${servantName} دخل إلى النظام`);
+            const handleLogout = () => { setLoggedIn(false); setServantName(""); setPassword(""); };
+            
+            const addStudentManually = () => {
+                if(!newStudent.name || !newStudent.phone) { alert("⚠️ الاسم والتليفون مطلوبين"); return; }
+                setStudents(prev => [...prev, {
+                    id: genId(), ...newStudent, class: selectedClass, points: 0, attendance: {},
+                    addedBy: servantName, addedDate: new Date().toLocaleString('ar-EG')
+                }]);
+                setNewStudent({ name:"", phone:"", parentPhone:"", address:"", birthday:"" });
+                setShowAddModal(false);
+            };
+            
+            const handleFileUpload = (file) => {
+                if(!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const { students: parsedStudents, errors, classMapping } = parseExcelToStudentsAdvanced(sheet, importClass, importDetectClass);
+                    
+                    if(parsedStudents.length === 0) {
+                        alert("❌ لم يتم العثور على بيانات صالحة. تأكد من وجود عمود الاسم على الأقل.");
+                        return;
                     }
-                    setLoggedIn(true);
-                    setError("");
-                } catch(e) {
-                    console.error(e);
-                    setError("خطأ: " + e.message);
+                    
+                    // إظهار معلومات عن توزيع الصفوف
+                    const classCount = {};
+                    parsedStudents.forEach(s => { classCount[s.class] = (classCount[s.class] || 0) + 1; });
+                    let infoText = `📊 تم قراءة ${parsedStudents.length} طالب.\n`;
+                    for(const [cls, count] of Object.entries(classCount)) {
+                        infoText += `• الصف ${cls}: ${count} طالب\n`;
+                    }
+                    if(Object.keys(classMapping).length > 0) {
+                        infoText += `\n🔄 تم التعرف على الصفوف تلقائياً من عمود "الصف" في الملف.`;
+                    } else if(importDetectClass) {
+                        infoText += `\n📌 سيتم إضافة جميع الطلاب إلى الصف: ${importClass}`;
+                    } else {
+                        infoText += `\n📌 سيتم إضافة جميع الطلاب إلى الصف: ${importClass}`;
+                    }
+                    setImportInfo(infoText);
+                    setImportPreview(parsedStudents);
+                };
+                reader.readAsArrayBuffer(file);
+            };
+            
+            const confirmImport = () => {
+                if(!importPreview.length) return;
+                const withIds = importPreview.map(s => ({ 
+                    ...s, 
+                    id: genId(), 
+                    addedBy: servantName, 
+                    addedDate: new Date().toLocaleString('ar-EG'),
+                    points: s.points || 0,
+                    attendance: s.attendance || {}
+                }));
+                setStudents(prev => [...prev, ...withIds]);
+                
+                // عرض ملخص الاستيراد
+                const classCount = {};
+                withIds.forEach(s => { classCount[s.class] = (classCount[s.class] || 0) + 1; });
+                let summary = `✅ تم استيراد ${withIds.length} طالب بنجاح!\n`;
+                for(const [cls, count] of Object.entries(classCount)) {
+                    summary += `• ${cls}: ${count} طالب\n`;
+                }
+                alert(summary);
+                
+                setImportPreview([]);
+                setImportInfo("");
+                setShowImportModal(false);
+            };
+            
+            const updateStudent = () => {
+                if(!editingStudent.name || !editingStudent.phone) { alert("⚠️ الاسم والتليفون مطلوبين"); return; }
+                setStudents(prev => prev.map(s => s.id === editingStudent.id ? editingStudent : s));
+                setEditingStudent(null);
+            };
+            
+            const updateAttendance = (ids, status) => {
+                if(!ids.length) { alert("📌 اختر طالباً واحداً على الأقل"); return; }
+                setStudents(prev => prev.map(s => ids.includes(s.id) ? { ...s, attendance: { ...(s.attendance || {}), [selectedDate]: status } } : s));
+                setSelectedStudents([]);
+            };
+            
+            const addPoints = (id, name) => {
+                setStudents(prev => prev.map(s => s.id === id ? { ...s, points: (s.points || 0) + 5 } : s));
+            };
+            
+            const deleteStudent = (id, name) => {
+                if(confirm(`🗑️ هل تريد حذف ${name} نهائياً؟`)) {
+                    setStudents(prev => prev.filter(s => s.id !== id));
                 }
             };
             
-            const handleLogout = async () => { await addActivity(`${servantName} خرج من النظام`); setLoggedIn(false); setServantName(""); setPassword(""); };
-            
-            const addStudent = async () => {
-                if (!newStudent.name || !newStudent.phone) { alert("الاسم والتليفون مطلوبين"); return; }
-                try {
-                    await db.collection("students").add({ 
-                        name: newStudent.name, 
-                        phone: newStudent.phone, 
-                        parentPhone: newStudent.parentPhone || "", 
-                        address: newStudent.address || "", 
-                        birthday: newStudent.birthday || "",
-                        class: selectedClass, 
-                        points: 0, 
-                        attendance: {}, 
-                        addedBy: servantName, 
-                        addedDate: new Date().toLocaleString('ar-EG'), 
-                        addedTime: Date.now() 
-                    });
-                    await addActivity(`أضاف ${servantName} مخدوم جديد: ${newStudent.name} - فصل ${selectedClass}`);
-                    setNewStudent({ name: "", phone: "", parentPhone: "", address: "", birthday: "" });
-                    setShowAddStudent(false);
-                } catch(e) { alert("حدث خطأ: " + e.message); }
-            };
-            
-            const updateStudentInfo = async () => {
-                if (!editingStudent) return;
-                if (!editingStudent.name || !editingStudent.phone) { alert("الاسم والتليفون مطلوبين"); return; }
-                try {
-                    await db.collection("students").doc(editingStudent.id).update({
-                        name: editingStudent.name,
-                        phone: editingStudent.phone,
-                        parentPhone: editingStudent.parentPhone || "",
-                        address: editingStudent.address || "",
-                        birthday: editingStudent.birthday || ""
-                    });
-                    await addActivity(`${servantName} قام بتعديل بيانات المخدوم: ${editingStudent.name}`);
-                    setShowEditModal(false);
-                    setEditingStudent(null);
-                } catch(e) { alert("حدث خطأ أثناء التعديل"); }
-            };
-            
-            const updateAttendance = async (studentIds, status) => {
-                try {
-                    const batch = db.batch();
-                    for (const studentId of studentIds) {
-                        const student = students.find(s => s.id === studentId);
-                        if (student) {
-                            const updatedAttendance = { ...(student.attendance || {}), [selectedDate]: status };
-                            batch.update(db.collection("students").doc(studentId), { attendance: updatedAttendance });
-                        }
-                    }
-                    await batch.commit();
-                    await addActivity(`${servantName} سجل حضور ${studentIds.length} مخدوم`);
-                    setSelectedStudents([]);
-                } catch(e) { alert("حدث خطأ"); }
-            };
-            
-            const addPoints = async (studentId, studentName) => {
-                try {
-                    const student = students.find(s => s.id === studentId);
-                    await db.collection("students").doc(studentId).update({ points: (student?.points || 0) + 5 });
-                    await addActivity(`${servantName} أضاف 5 نقاط لـ ${studentName}`);
-                } catch(e) { alert("حدث خطأ"); }
-            };
-            
-            const deleteStudent = async (studentId, studentName) => {
-                if (confirm(`هل تريد حذف ${studentName}؟`)) {
-                    try { await db.collection("students").doc(studentId).delete(); await addActivity(`${servantName} حذف مخدوم: ${studentName}`); } catch(e) { alert("حدث خطأ"); }
+            const deleteServant = (id, name) => {
+                if(confirm(`⚠️ حذف الخادم "${name}" نهائياً؟`)) {
+                    setServants(prev => prev.filter(s => s.id !== id));
+                    setShowDeleteServantConfirm(null);
                 }
             };
             
             const getAttendanceRate = (student) => {
                 const records = Object.values(student.attendance || {});
-                if (records.length === 0) return 0;
+                if(!records.length) return 0;
                 return Math.round((records.filter(r => r === true).length / records.length) * 100);
             };
             
-            const filteredStudents = students.filter(s => s.class === selectedClass && s.name?.includes(search));
-            const todayAttendance = filteredStudents.filter(s => s.attendance?.[selectedDate] === true).length;
-            const totalPoints = filteredStudents.reduce((sum, s) => sum + (s.points || 0), 0);
-            const upcomingBirthdaysList = getUpcomingBirthdays(students);
+            const filteredStudents = students.filter(s => s.class === selectedClass && (!search || s.name.includes(search)));
+            const upcomingBirthdays = getUpcomingBirthdays(students);
             
-            if (!db) {
-                return <div className="min-h-screen flex items-center justify-center"><div className="text-center text-red-600"><div className="text-4xl mb-4">⚠️</div><h2 className="text-xl">خطأ في اتصال قاعدة البيانات</h2><p className="text-sm">تأكد من إعدادات Firebase</p></div></div>;
+            if(loading) {
+                return <div className="h-screen flex items-center justify-center gradient-bg"><i className="fas fa-church text-6xl text-purple-400 animate-pulse"></i></div>;
             }
             
-            if (loading && loggedIn) {
-                return <div className="min-h-screen flex items-center justify-center"><div className="text-center"><div className="loading mx-auto mb-4"></div><p>جاري التحميل...</p></div></div>;
-            }
-            
-            if (!loggedIn) {
+            if(!loggedIn) {
                 return (
-                    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-600 to-purple-600 p-4">
-                        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-                            <div className="text-center mb-8"><div className="text-6xl mb-3">⛪</div><h1 className="text-2xl font-bold">نظام مدارس الأحد</h1><p className="text-gray-600">جمعيه مار بولس الرسول</p><p className="text-sm text-green-600 mt-2">✓ بيانات مشتركة لجميع الخدام</p></div>
-                            {error && <div className="bg-red-100 text-red-700 p-3 rounded-xl mb-4 text-center">{error}</div>}
-                            <div className="space-y-4">
-                                <input type="text" className="w-full p-3 border rounded-xl" placeholder="اسم الخادم" value={servantName} onChange={e => setServantName(e.target.value)} />
-                                <input type="password" className="w-full p-3 border rounded-xl" placeholder="كلمة المرور" value={password} onChange={e => setPassword(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleLogin()} />
-                                <button onClick={handleLogin} className="w-full bg-indigo-600 text-white p-3 rounded-xl font-semibold hover:bg-indigo-700">دخول</button>
+                    <div className="min-h-screen gradient-bg flex items-center justify-center p-5">
+                        <div className="glass-card w-full max-w-md p-7 animate-fade-up">
+                            <div className="text-center mb-6">
+                                <div className="w-20 h-20 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                                    <i className="fas fa-cross text-4xl text-purple-600"></i>
+                                </div>
+                                <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-700 to-indigo-600 bg-clip-text text-transparent">مار بولس الرسول</h1>
+                                <p className="text-gray-500 text-sm mt-1">نظام مدارس الأحد • المرحلة الإعدادية</p>
+                            </div>
+                            {error && <div className="bg-red-50 text-red-600 p-3 rounded-2xl text-sm mb-4 text-center">{error}</div>}
+                            <div className="space-y-3">
+                                <div className="relative"><i className="fas fa-user absolute right-4 top-4 text-gray-400"></i><input type="text" className="w-full p-3 pr-12 border border-gray-200 rounded-2xl bg-gray-50" placeholder="اسم الخادم" value={servantName} onChange={e => setServantName(e.target.value)} /></div>
+                                <div className="relative"><i className="fas fa-lock absolute right-4 top-4 text-gray-400"></i><input type="password" className="w-full p-3 pr-12 border border-gray-200 rounded-2xl bg-gray-50" placeholder="كلمة المرور" value={password} onChange={e => setPassword(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleLogin()} /></div>
+                                <button onClick={handleLogin} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3 rounded-2xl font-bold shadow-lg active:scale-95 transition flex items-center justify-center gap-2"><i className="fas fa-arrow-left"></i> دخول</button>
                             </div>
                         </div>
                     </div>
@@ -278,174 +377,97 @@
             }
             
             return (
-                <div className="min-h-screen bg-gray-50" dir="rtl">
-                    <div className="bg-white shadow-sm px-6 py-4 flex justify-between items-center flex-wrap gap-3">
-                        <div><h1 className="text-xl font-bold text-indigo-600">نظام مدارس الأحد</h1><p className="text-sm text-gray-500">جمعية مار بولس - أعياد الميلاد والتواصل</p></div>
-                        <div className="flex items-center gap-4"><div className="text-left"><p className="font-semibold">{servantName}</p><p className="text-xs text-gray-500">خادم</p></div><button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg">خروج</button></div>
+                <div className="gradient-bg h-screen flex flex-col overflow-hidden">
+                    {/* Header */}
+                    <div className="glass-card mx-4 mt-4 px-5 py-3 flex justify-between items-center">
+                        <div>
+                            <h1 className="text-lg font-extrabold bg-gradient-to-r from-purple-700 to-indigo-600 bg-clip-text text-transparent"><i className="fas fa-church text-purple-500 ml-1"></i> مار بولس</h1>
+                            <p className="text-xs text-gray-400">مرحباً {servantName} <i className="fas fa-hand-peace text-amber-500"></i></p>
+                        </div>
+                        <button onClick={handleLogout} className="bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm"><i className="fas fa-sign-out-alt ml-1"></i> خروج</button>
                     </div>
-                    <div className="border-b bg-white px-6 overflow-x-auto"><div className="flex gap-2">{[{id:"dashboard",label:"📊 الرئيسية"},{id:"students",label:"👥 المخدومين"},{id:"attendance",label:"📅 الحضور"},{id:"birthdays",label:"🎂 أعياد الميلاد"},{id:"reports",label:"📈 التقارير"},{id:"servants",label:"🙏 الخدام"}].map(tab=><button key={tab.id} onClick={()=>setActiveTab(tab.id)} className={`px-4 py-3 font-semibold whitespace-nowrap ${activeTab===tab.id?"border-b-2 border-indigo-600 text-indigo-600":"text-gray-500"}`}>{tab.label}</button>)}</div></div>
                     
-                    <div className="p-6">
-                        {/* لوحة التحكم dashboard */}
-                        {activeTab === "dashboard" && (
-                            <div>
-                                <h2 className="text-2xl font-bold mb-4">لوحة التحكم</h2>
-                                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-                                    <div className="bg-blue-500 text-white p-6 rounded-xl"><div className="text-3xl">👥</div><div className="text-2xl font-bold">{filteredStudents.length}</div><div>المخدومين (هذا الفصل)</div></div>
-                                    <div className="bg-green-500 text-white p-6 rounded-xl"><div className="text-3xl">✅</div><div className="text-2xl font-bold">{todayAttendance}</div><div>الحضور اليوم</div></div>
-                                    <div className="bg-yellow-500 text-white p-6 rounded-xl"><div className="text-3xl">🏆</div><div className="text-2xl font-bold">{totalPoints}</div><div>إجمالي النقاط</div></div>
-                                    <div className="bg-purple-500 text-white p-6 rounded-xl"><div className="text-3xl">🙏</div><div className="text-2xl font-bold">{servants.length}</div><div>الخدام</div></div>
-                                    <div className="bg-pink-500 text-white p-6 rounded-xl"><div className="text-3xl">🎂</div><div className="text-2xl font-bold">{upcomingBirthdaysList.length}</div><div>أعياد ميلاد قادمة</div></div>
+                    {/* Class selector - فقط إعدادي */}
+                    <div className="px-4 mt-3">
+                        <div className="flex gap-2 overflow-x-auto pb-2 hide-scroll">
+                            {CLASSES.map(c => (
+                                <button key={c} onClick={() => { setSelectedClass(c); setSearch(""); }} className={`px-5 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap shadow-sm flex items-center gap-2 ${selectedClass === c ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-gray-600 border'}`}>
+                                    <i className={`fas ${c.includes("أولى") ? "fa-1" : c.includes("ثانية") ? "fa-2" : "fa-3"}`}></i>
+                                    {c}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    
+                    {/* Main content */}
+                    <div className="flex-1 overflow-y-auto px-4 pb-24 mt-3 hide-scroll">
+                        {activeTab === "home" && (
+                            <div className="animate-fade-up">
+                                <div className="grid grid-cols-3 gap-3 mb-5">
+                                    <div className="glass-card p-4 text-center"><i className="fas fa-users text-2xl text-purple-500"></i><div className="text-2xl font-bold">{students.length}</div><div className="text-xs">إجمالي الطلاب</div></div>
+                                    <div className="glass-card p-4 text-center"><i className="fas fa-birthday-cake text-2xl text-pink-500"></i><div className="text-2xl font-bold">{upcomingBirthdays.length}</div><div className="text-xs">أعياد قادمة</div></div>
+                                    <div className="glass-card p-4 text-center"><i className="fas fa-trophy text-2xl text-amber-500"></i><div className="text-2xl font-bold">{students.reduce((a,b)=>a+(b.points||0),0)}</div><div className="text-xs">نقاط</div></div>
                                 </div>
-                                {upcomingBirthdaysList.length > 0 && (
-                                    <div className="bg-white rounded-xl p-5 shadow">
-                                        <h3 className="text-lg font-bold mb-3 flex items-center gap-2">🎉 أعياد ميلاد قادمة خلال 30 يوماً</h3>
-                                        <div className="space-y-2">
-                                            {upcomingBirthdaysList.map(s => (
-                                                <div key={s.id} className="flex justify-between items-center p-2 border-b border-orange-100">
-                                                    <div><span className="font-semibold">{s.name}</span> <span className="text-sm text-gray-500 mr-2">({s.class})</span></div>
-                                                    <div className="birthday-badge">🎂 {s.birthdayDisplay} - بعد {s.daysLeft} يوم</div>
-                                                </div>
-                                            ))}
-                                        </div>
+                                {upcomingBirthdays.length > 0 && (
+                                    <div className="glass-card p-4 mb-5 bg-gradient-to-r from-pink-50 to-rose-50">
+                                        <h2 className="font-bold text-rose-700 flex items-center gap-2"><i className="fas fa-gift"></i> أعياد ميلاد قريبة</h2>
+                                        {upcomingBirthdays.slice(0,4).map(s => <div key={s.id} className="flex justify-between items-center py-2 border-b border-pink-100"><span>{s.name} ({s.class})</span><span className="bg-white px-3 py-1 rounded-full text-xs">بعد {s.daysLeft} يوم</span></div>)}
                                     </div>
                                 )}
+                                <div className="glass-card p-4"><div className="flex justify-between"><h3 className="font-bold"><i className="fas fa-calendar-check text-purple-500"></i> حضور اليوم</h3><span className="text-sm">{selectedDate}</span></div><div className="flex justify-between text-sm mt-2"><span>{selectedClass}</span><span className="font-bold">{filteredStudents.filter(s=>s.attendance?.[selectedDate]===true).length} / {filteredStudents.length}</span></div><div className="mt-2 h-2 bg-gray-100 rounded-full"><div className="bg-purple-500 h-full rounded-full" style={{width: `${filteredStudents.length ? (filteredStudents.filter(s=>s.attendance?.[selectedDate]===true).length / filteredStudents.length * 100) : 0}%`}}></div></div></div>
                             </div>
                         )}
                         
-                        {/* إدارة المخدومين مع معلومات كاملة */}
                         {activeTab === "students" && (
-                            <div>
-                                <div className="flex justify-between mb-4 flex-wrap gap-2"><h2 className="text-2xl font-bold">المخدومين - بيانات كاملة</h2><button onClick={()=>setShowAddStudent(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg">➕ إضافة مخدوم</button></div>
-                                <div className="bg-white rounded-xl p-6">
-                                    <select className="border p-2 rounded-lg mb-4 w-full" value={selectedClass} onChange={e=>setSelectedClass(e.target.value)}>{CLASSES.map(c=><option key={c}>{c}</option>)}</select>
-                                    <input type="text" placeholder="بحث بالاسم..." className="border p-2 rounded-lg w-full mb-4" value={search} onChange={e=>setSearch(e.target.value)}/>
-                                    <div className="space-y-3">
-                                        {filteredStudents.map(s=>(
-                                            <div key={s.id} className="border rounded-xl p-4 card-hover transition-all bg-white">
-                                                <div className="flex flex-wrap justify-between items-start gap-3">
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2 flex-wrap">
-                                                            <span className="font-bold text-lg">{s.name}</span>
-                                                            {s.birthday && <span className="birthday-badge text-xs">🎂 {formatBirthday(s.birthday)}</span>}
-                                                        </div>
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-sm text-gray-600">
-                                                            <div>📞 تليفون المخدوم: {s.phone || "—"}</div>
-                                                            <div>👨‍👩 تليفون ولي الأمر: {s.parentPhone || "—"}</div>
-                                                            <div>🏠 العنوان: {s.address || "—"}</div>
-                                                            <div>⭐ النقاط: {s.points || 0}</div>
-                                                            <div>📅 نسبة الحضور: {getAttendanceRate(s)}%</div>
-                                                            {s.birthday && <div>🎂 تاريخ الميلاد: {s.birthday.split('-').reverse().join('/')}</div>}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex gap-2">
-                                                        <button onClick={() => { setEditingStudent({...s}); setShowEditModal(true); }} className="bg-blue-500 text-white px-3 py-1.5 rounded-lg text-sm">✏️ تعديل</button>
-                                                        <button onClick={()=>addPoints(s.id,s.name)} className="bg-yellow-500 text-white px-3 py-1.5 rounded-lg text-sm">🏆 +5</button>
-                                                        <button onClick={()=>deleteStudent(s.id,s.name)} className="bg-red-500 text-white px-3 py-1.5 rounded-lg text-sm">🗑️ حذف</button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        {filteredStudents.length === 0 && <div className="text-center text-gray-400 py-8">لا يوجد مخدومين في هذا الفصل</div>}
-                                    </div>
+                            <div className="animate-fade-up">
+                                <div className="flex justify-between items-center mb-4"><h2 className="font-bold text-lg"><i className="fas fa-id-card text-purple-500"></i> كروت الطلاب</h2><button onClick={() => setShowAddModal(true)} className="bg-purple-600 text-white px-4 py-2 rounded-full text-sm shadow-md flex items-center gap-1"><i className="fas fa-plus"></i> إضافة</button></div>
+                                <div className="relative mb-4"><i className="fas fa-search absolute right-4 top-3.5 text-gray-400"></i><input type="text" placeholder="بحث بالاسم..." className="w-full p-3 pr-11 border-0 rounded-2xl bg-white shadow-sm" value={search} onChange={e => setSearch(e.target.value)}/></div>
+                                <div className="space-y-3">
+                                    {filteredStudents.map(s => (
+                                        <div key={s.id} className="glass-card p-4">
+                                            <div className="flex justify-between items-start"><div><h3 className="font-bold text-lg">{s.name}</h3><div className="text-xs text-gray-400"><i className="fas fa-graduation-cap"></i> {s.class}</div></div>{s.birthday && <span className="bg-purple-50 text-purple-600 text-xs px-3 py-1 rounded-full"><i className="fas fa-cake-candles"></i> {formatBirthday(s.birthday)}</span>}</div>
+                                            <div className="grid grid-cols-2 gap-2 mt-3 text-sm"><div><i className="fas fa-phone-alt text-purple-400 w-5"></i> {s.phone}</div>{s.parentPhone && <div><i className="fas fa-user-friends text-purple-400"></i> {s.parentPhone}</div>}<div><i className="fas fa-star text-amber-400"></i> نقاط: {s.points||0}</div><div><i className="fas fa-chart-line text-green-500"></i> حضور: {getAttendanceRate(s)}%</div></div>
+                                            <div className="flex gap-2 mt-3 pt-2 border-t"><button onClick={() => setEditingStudent({...s})} className="flex-1 bg-gray-100 py-2 rounded-xl text-sm"><i className="fas fa-edit text-blue-500"></i> تعديل</button><button onClick={() => addPoints(s.id, s.name)} className="flex-1 bg-amber-50 text-amber-600 py-2 rounded-xl text-sm"><i className="fas fa-plus-circle"></i> +5</button><button onClick={() => deleteStudent(s.id, s.name)} className="bg-red-50 text-red-500 px-3 py-2 rounded-xl text-sm"><i className="fas fa-trash-alt"></i></button></div>
+                                        </div>
+                                    ))}
+                                    {filteredStudents.length === 0 && <div className="text-center text-gray-400 py-10 glass-card p-8"><i className="fas fa-user-slash text-5xl mb-2"></i><p>لا يوجد طلاب في هذا الفصل</p><button onClick={() => setShowImportModal(true)} className="mt-3 text-purple-600"><i className="fas fa-file-excel"></i> استيراد من Excel</button></div>}
                                 </div>
                             </div>
                         )}
                         
-                        {/* attendance tab */}
                         {activeTab === "attendance" && (
-                            <div><h2 className="text-2xl font-bold mb-4">تسجيل الحضور</h2>
-                            <div className="bg-white rounded-xl p-6"><select className="border p-2 rounded-lg mb-4 w-full" value={selectedClass} onChange={e=>setSelectedClass(e.target.value)}>{CLASSES.map(c=><option key={c}>{c}</option>)}</select>
-                            <input type="date" className="border p-2 rounded-lg mb-4 w-full" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)}/>
-                            <div className="flex gap-2 mb-4"><button onClick={()=>setSelectedStudents(filteredStudents.map(s=>s.id))} className="bg-gray-700 text-white px-4 py-2 rounded-lg">تحديد الكل</button>
-                            <button onClick={()=>updateAttendance(selectedStudents,true)} className="flex-1 bg-green-600 text-white py-2 rounded-lg">حاضر</button>
-                            <button onClick={()=>updateAttendance(selectedStudents,false)} className="flex-1 bg-red-600 text-white py-2 rounded-lg">غائب</button></div>
-                            {filteredStudents.map(s=><div key={s.id} onClick={()=>setSelectedStudents(prev=>prev.includes(s.id)?prev.filter(i=>i!==s.id):[...prev,s.id])} className={`p-3 border rounded-lg mb-2 cursor-pointer ${selectedStudents.includes(s.id)?"bg-indigo-50 border-indigo-500":"border-gray-200"}`}><span className="font-semibold">{s.name}</span> {s.attendance?.[selectedDate]!==undefined && <span className={`mr-2 text-sm ${s.attendance?.[selectedDate]?"text-green-600":"text-red-600"}`}>{s.attendance?.[selectedDate]?"✅ حاضر":"❌ غائب"}</span>}</div>)}</div></div>
+                            <div className="glass-card p-5"><h2 className="font-bold text-lg mb-3"><i className="fas fa-check-circle text-green-500"></i> تسجيل الحضور</h2><div className="relative mb-3"><i className="fas fa-calendar-alt absolute right-4 top-3.5 text-gray-400"></i><input type="date" className="w-full p-3 pr-11 border-0 rounded-2xl bg-gray-50" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}/></div><div className="flex gap-2 mb-4"><button onClick={() => setSelectedStudents(filteredStudents.map(s=>s.id))} className="bg-gray-700 text-white px-4 py-2 rounded-full text-sm"><i className="fas fa-check-double"></i> تحديد الكل</button><button onClick={() => updateAttendance(selectedStudents, true)} className="flex-1 bg-green-600 text-white py-2.5 rounded-full"><i className="fas fa-check"></i> حضور</button><button onClick={() => updateAttendance(selectedStudents, false)} className="flex-1 bg-red-500 text-white py-2.5 rounded-full"><i className="fas fa-times"></i> غياب</button></div><div className="space-y-2 max-h-[55vh] overflow-auto">{filteredStudents.map(s => (<div key={s.id} onClick={() => setSelectedStudents(prev => prev.includes(s.id) ? prev.filter(i=>i!==s.id) : [...prev, s.id])} className={`p-3 rounded-2xl border flex justify-between items-center cursor-pointer ${selectedStudents.includes(s.id) ? 'bg-purple-50 border-purple-300' : 'bg-white'}`}><span><i className="fas fa-user-graduate text-purple-400 ml-1"></i> {s.name}</span>{s.attendance?.[selectedDate] !== undefined && <span className={`text-sm ${s.attendance[selectedDate] ? 'text-green-600' : 'text-red-500'}`}>{s.attendance[selectedDate] ? '✅ حاضر' : '❌ غائب'}</span>}</div>))}</div></div>
                         )}
                         
-                        {/* صفحة أعياد الميلاد المنفصلة */}
                         {activeTab === "birthdays" && (
-                            <div>
-                                <h2 className="text-2xl font-bold mb-2">🎂 أعياد الميلاد</h2>
-                                <p className="text-gray-500 mb-4">جميع أعياد ميلاد المخدومين مرتبة حسب التاريخ (قادمة خلال 30 يومًا + جميع الأعياد)</p>
-                                <div className="bg-white rounded-xl p-6">
-                                    <div className="mb-6">
-                                        <h3 className="text-lg font-semibold border-b pb-2 mb-3 text-orange-600">🌟 الأعياد القادمة (خلال 30 يوماً)</h3>
-                                        {upcomingBirthdaysList.length === 0 && <div className="text-gray-400 p-4 text-center">لا توجد أعياد ميلاد قادمة خلال 30 يوماً</div>}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {upcomingBirthdaysList.map(s => (
-                                                <div key={s.id} className="flex justify-between items-center p-3 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl border border-orange-200">
-                                                    <div><span className="font-bold">{s.name}</span><span className="text-xs mr-2 text-gray-500">({s.class})</span><div className="text-sm text-gray-600">📞 {s.phone}</div></div>
-                                                    <div className="text-center bg-white px-3 py-1 rounded-full shadow text-sm font-bold text-amber-700">بعد {s.daysLeft} يوم 🎂</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    
-                                    <h3 className="text-lg font-semibold border-b pb-2 mb-3 mt-6">📅 جميع أعياد الميلاد (حسب الشهر)</h3>
-                                    {students.filter(s => s.birthday).length === 0 ? (
-                                        <div className="text-gray-400 text-center p-6">لا توجد بيانات ميلاد مسجلة، قم بإضافة تاريخ ميلاد لكل مخدوم عبر زر تعديل</div>
-                                    ) : (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {[...students].filter(s => s.birthday).sort((a,b) => {
-                                                const aParts = a.birthday.split('-');
-                                                const bParts = b.birthday.split('-');
-                                                if (aParts[1] === bParts[1]) return (aParts[2] || 0) - (bParts[2] || 0);
-                                                return (aParts[1] || 0) - (bParts[1] || 0);
-                                            }).map(s => {
-                                                const parts = s.birthday.split('-');
-                                                const monthName = new Date(2000, parseInt(parts[1])-1, 1).toLocaleString('ar-EG', { month: 'long' });
-                                                return (
-                                                    <div key={s.id} className="border rounded-xl p-3 flex justify-between items-center bg-white shadow-sm hover:shadow">
-                                                        <div><div className="font-semibold">{s.name}</div><div className="text-xs text-gray-500">{s.class}</div><div className="text-sm">📞 {s.phone}</div></div>
-                                                        <div className="text-center bg-indigo-50 px-3 py-1 rounded-full"><span className="font-bold text-indigo-700">{parts[2]}</span> <span className="text-xs">{monthName}</span></div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                            <div className="glass-card p-5"><h2 className="font-bold text-lg mb-3"><i className="fas fa-birthday-cake text-pink-500"></i> أعياد الميلاد</h2><div className="mb-4"><h3 className="font-semibold text-amber-700"><i className="fas fa-star-of-life"></i> القادمة</h3>{upcomingBirthdays.map(s => <div key={s.id} className="flex justify-between p-2 border-b"><span>{s.name} ({s.class})</span><span className="bg-amber-100 px-3 py-1 rounded-full text-sm">بعد {s.daysLeft} يوم</span></div>)}</div><h3 className="font-semibold mt-3">📅 جميع التواريخ</h3>{students.filter(s=>s.birthday).sort((a,b)=>(a.birthday.split('-')[1]||0)-(b.birthday.split('-')[1]||0)).map(s => {let p=s.birthday.split('-'); return <div key={s.id} className="flex justify-between p-2 border-b"><span>{s.name}</span><span className="text-purple-600">{p[2]}/{p[1]}</span></div>})}</div>
                         )}
                         
                         {activeTab === "reports" && (
-                            <div><h2 className="text-2xl font-bold mb-4">التقارير</h2><div className="bg-white rounded-xl p-6"><select className="border p-2 rounded-lg w-full mb-4" value={selectedClass} onChange={e=>setSelectedClass(e.target.value)}>{CLASSES.map(c=><option key={c}>{c}</option>)}</select>{filteredStudents.map((s,i)=><div key={s.id} className="flex justify-between items-center p-3 border-b"><div><span className="font-bold">{i+1}.</span> {s.name}</div><div><span className="text-sm">نسبة الحضور: {getAttendanceRate(s)}% | نقاط: {s.points||0}</span></div></div>)}</div></div>
+                            <div className="glass-card p-5"><h2 className="font-bold text-lg mb-3"><i className="fas fa-chart-line text-purple-500"></i> ترتيب النقاط</h2>{filteredStudents.sort((a,b)=>(b.points||0)-(a.points||0)).map((s,i) => <div key={s.id} className="flex justify-between p-2 border-b"><span>{i+1}. {s.name}</span><span className="text-amber-600 font-bold">{s.points||0} نقطة</span></div>)}</div>
                         )}
                         
                         {activeTab === "servants" && (
-                            <div><h2 className="text-2xl font-bold mb-4">الخدام</h2><div className="bg-white rounded-xl p-6">{servants.map(s=><div key={s.id} className="p-3 border-b"><div className="font-semibold">{s.name}</div><div className="text-sm text-gray-500">آخر دخول: {s.lastLogin || "غير متاح"}</div></div>)}</div></div>
+                            <div className="glass-card p-5"><h2 className="font-bold text-lg mb-3"><i className="fas fa-users text-purple-500"></i> فريق الخدمة</h2>{servants.map(s => <div key={s.id} className="flex justify-between items-center p-2 border-b"><div><i className="fas fa-user-check text-green-500"></i> {s.name}<div className="text-xs text-gray-400">{s.lastLogin}</div></div><button onClick={() => setShowDeleteServantConfirm(s)} className="bg-red-50 text-red-500 px-3 py-1.5 rounded-full text-xs"><i className="fas fa-trash-alt"></i> حذف</button></div>)}</div>
                         )}
                     </div>
                     
-                    {/* Modal إضافة مخدوم مع حقل الميلاد */}
-                    {showAddStudent && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                            <div className="bg-white rounded-xl p-6 w-full max-w-md"><h3 className="text-xl font-bold mb-4">إضافة مخدوم جديد</h3>
-                                <input type="text" placeholder="الاسم الكامل *" className="w-full p-2 border rounded-lg mb-3" value={newStudent.name} onChange={e=>setNewStudent({...newStudent,name:e.target.value})}/>
-                                <input type="tel" placeholder="تليفون المخدوم *" className="w-full p-2 border rounded-lg mb-3" value={newStudent.phone} onChange={e=>setNewStudent({...newStudent,phone:e.target.value})}/>
-                                <input type="tel" placeholder="تليفون ولي الأمر" className="w-full p-2 border rounded-lg mb-3" value={newStudent.parentPhone} onChange={e=>setNewStudent({...newStudent,parentPhone:e.target.value})}/>
-                                <input type="text" placeholder="العنوان" className="w-full p-2 border rounded-lg mb-3" value={newStudent.address} onChange={e=>setNewStudent({...newStudent,address:e.target.value})}/>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الميلاد (اختياري)</label>
-                                <input type="date" className="w-full p-2 border rounded-lg mb-3" value={newStudent.birthday} onChange={e=>setNewStudent({...newStudent,birthday:e.target.value})}/>
-                                <div className="flex gap-3"><button onClick={addStudent} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg">إضافة</button><button onClick={()=>setShowAddStudent(false)} className="flex-1 bg-gray-300 py-2 rounded-lg">إلغاء</button></div>
-                            </div>
-                        </div>
-                    )}
+                    {/* Bottom navigation */}
+                    <div className="bottom-nav fixed bottom-0 left-0 right-0 py-2 px-3 flex justify-around">
+                        {[{id:"home", icon:"fas fa-home", label:"الرئيسية"},{id:"students", icon:"fas fa-id-card", label:"الكروت"},{id:"attendance", icon:"fas fa-calendar-check", label:"الحضور"},{id:"birthdays", icon:"fas fa-birthday-cake", label:"أعياد"},{id:"reports", icon:"fas fa-chart-simple", label:"تقرير"},{id:"servants", icon:"fas fa-user-friends", label:"الخدام"}].map(tab => (<button key={tab.id} onClick={() => setActiveTab(tab.id)} className="flex flex-col items-center flex-1"><i className={`${tab.icon} text-xl ${activeTab === tab.id ? 'text-purple-600' : 'text-gray-400'}`}></i><span className={`text-[10px] ${activeTab === tab.id ? 'text-purple-600 font-semibold' : 'text-gray-400'}`}>{tab.label}</span></button>))}
+                    </div>
                     
-                    {/* Modal تعديل بيانات المخدوم */}
-                    {showEditModal && editingStudent && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                            <div className="bg-white rounded-xl p-6 w-full max-w-md"><h3 className="text-xl font-bold mb-4">تعديل بيانات المخدوم</h3>
-                                <input type="text" placeholder="الاسم الكامل" className="w-full p-2 border rounded-lg mb-3" value={editingStudent.name} onChange={e=>setEditingStudent({...editingStudent,name:e.target.value})}/>
-                                <input type="tel" placeholder="تليفون المخدوم" className="w-full p-2 border rounded-lg mb-3" value={editingStudent.phone} onChange={e=>setEditingStudent({...editingStudent,phone:e.target.value})}/>
-                                <input type="tel" placeholder="تليفون ولي الأمر" className="w-full p-2 border rounded-lg mb-3" value={editingStudent.parentPhone || ""} onChange={e=>setEditingStudent({...editingStudent,parentPhone:e.target.value})}/>
-                                <input type="text" placeholder="العنوان" className="w-full p-2 border rounded-lg mb-3" value={editingStudent.address || ""} onChange={e=>setEditingStudent({...editingStudent,address:e.target.value})}/>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الميلاد</label>
-                                <input type="date" className="w-full p-2 border rounded-lg mb-3" value={editingStudent.birthday || ""} onChange={e=>setEditingStudent({...editingStudent,birthday:e.target.value})}/>
-                                <div className="flex gap-3"><button onClick={updateStudentInfo} className="flex-1 bg-green-600 text-white py-2 rounded-lg">حفظ التعديلات</button><button onClick={()=>setShowEditModal(false)} className="flex-1 bg-gray-300 py-2 rounded-lg">إلغاء</button></div>
-                            </div>
-                        </div>
-                    )}
+                    {activeTab === "students" && <button className="fab-btn" onClick={() => setShowAddModal(true)}><i className="fas fa-plus text-white text-2xl"></i></button>}
+                    
+                    {/* Add modal */}
+                    {showAddModal && (<div className="fixed inset-0 bg-black/40 flex items-end justify-center z-50" onClick={() => setShowAddModal(false)}><div className="bg-white w-full rounded-t-3xl p-6 max-h-[85vh] overflow-auto" onClick={e=>e.stopPropagation()}><h3 className="font-bold text-xl mb-4"><i className="fas fa-user-plus text-purple-500"></i> إضافة طالب</h3><div className="space-y-3"><input type="text" placeholder="الاسم الكامل *" className="w-full p-3 border rounded-2xl" value={newStudent.name} onChange={e=>setNewStudent({...newStudent,name:e.target.value})}/><input type="tel" placeholder="رقم التليفون *" className="w-full p-3 border rounded-2xl" value={newStudent.phone} onChange={e=>setNewStudent({...newStudent,phone:e.target.value})}/><input type="tel" placeholder="تليفون ولي الأمر" className="w-full p-3 border rounded-2xl" value={newStudent.parentPhone} onChange={e=>setNewStudent({...newStudent,parentPhone:e.target.value})}/><input type="text" placeholder="العنوان" className="w-full p-3 border rounded-2xl" value={newStudent.address} onChange={e=>setNewStudent({...newStudent,address:e.target.value})}/><input type="date" className="w-full p-3 border rounded-2xl" value={newStudent.birthday} onChange={e=>setNewStudent({...newStudent,birthday:e.target.value})}/></div><div className="flex gap-3 mt-5"><button onClick={addStudentManually} className="flex-1 bg-purple-600 text-white py-3 rounded-2xl font-bold">حفظ</button><button onClick={()=>setShowAddModal(false)} className="flex-1 bg-gray-200 py-3 rounded-2xl">إلغاء</button></div><button onClick={()=>{setShowAddModal(false); setShowImportModal(true);}} className="w-full mt-3 text-purple-600 text-sm"><i className="fas fa-file-excel"></i> استيراد من Excel</button></div></div>)}
+                    
+                    {/* Import modal */}
+                    {showImportModal && (<div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={()=>setShowImportModal(false)}><div className="bg-white rounded-3xl p-6 w-full max-w-md" onClick={e=>e.stopPropagation()}><h3 className="font-bold text-lg mb-3 flex items-center gap-2"><i className="fas fa-file-excel text-green-600"></i> استيراد Excel</h3><div className="mb-3"><label className="block text-sm mb-1">📌 الفصل الافتراضي (إذا لم يوجد عمود صف):</label><select className="w-full p-3 border rounded-2xl" value={importClass} onChange={e=>setImportClass(e.target.value)}>{CLASSES.map(c=><option key={c}>{c}</option>)}</select></div><div className="mb-3 flex items-center gap-2"><input type="checkbox" id="detectClass" checked={importDetectClass} onChange={e=>setImportDetectClass(e.target.checked)}/><label htmlFor="detectClass" className="text-sm">🔄 اكتشاف الصف تلقائياً من عمود "الصف" أو "class" في الملف</label></div><div className="border-2 border-dashed border-purple-300 rounded-2xl p-6 text-center cursor-pointer bg-purple-50/30" onClick={()=>document.getElementById('excelImp').click()}><i className="fas fa-cloud-upload-alt text-4xl text-purple-400"></i><p className="text-sm mt-1">اختر ملف Excel</p><input type="file" id="excelImp" accept=".xlsx,.xls" className="hidden" onChange={e=>e.target.files && handleFileUpload(e.target.files[0])}/></div>{importInfo && <div className="mt-3 p-2 bg-blue-50 rounded-2xl text-sm whitespace-pre-line">{importInfo}</div>}{importPreview.length > 0 && <div className="mt-4"><p className="font-bold text-green-600"><i className="fas fa-check-circle"></i> {importPreview.length} طالب جاهز</p><button onClick={confirmImport} className="w-full bg-green-600 text-white py-3 rounded-2xl mt-2 font-bold">تأكيد الاستيراد</button></div>}<button onClick={()=>{setShowImportModal(false); setImportPreview([]); setImportInfo("");}} className="w-full mt-3 text-gray-500">إغلاق</button></div></div>)}
+                    
+                    {editingStudent && (<div className="fixed inset-0 bg-black/40 flex items-end justify-center z-50" onClick={()=>setEditingStudent(null)}><div className="bg-white w-full rounded-t-3xl p-6" onClick={e=>e.stopPropagation()}><h3 className="font-bold text-xl mb-3">تعديل البيانات</h3><div className="space-y-3"><input className="w-full p-3 border rounded-2xl" value={editingStudent.name} onChange={e=>setEditingStudent({...editingStudent,name:e.target.value})}/><input className="w-full p-3 border rounded-2xl" value={editingStudent.phone} onChange={e=>setEditingStudent({...editingStudent,phone:e.target.value})}/><input className="w-full p-3 border rounded-2xl" value={editingStudent.parentPhone||""} onChange={e=>setEditingStudent({...editingStudent,parentPhone:e.target.value})}/><input className="w-full p-3 border rounded-2xl" value={editingStudent.address||""} onChange={e=>setEditingStudent({...editingStudent,address:e.target.value})}/><input type="date" className="w-full p-3 border rounded-2xl" value={editingStudent.birthday||""} onChange={e=>setEditingStudent({...editingStudent,birthday:e.target.value})}/></div><div className="flex gap-2 mt-4"><button onClick={updateStudent} className="flex-1 bg-purple-600 text-white py-3 rounded-2xl font-bold">حفظ</button><button onClick={()=>setEditingStudent(null)} className="flex-1 bg-gray-200 py-3 rounded-2xl">إلغاء</button></div></div></div>)}
+                    
+                    {showDeleteServantConfirm && (<div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={()=>setShowDeleteServantConfirm(null)}><div className="bg-white rounded-3xl p-6 w-full max-w-sm text-center" onClick={e=>e.stopPropagation()}><i className="fas fa-exclamation-triangle text-red-500 text-5xl mb-3"></i><h3 className="font-bold text-xl">حذف الخادم</h3><p className="text-gray-500 my-2">حذف <span className="font-bold text-red-600">{showDeleteServantConfirm.name}</span> نهائياً؟</p><div className="flex gap-3 mt-4"><button onClick={()=>deleteServant(showDeleteServantConfirm.id, showDeleteServantConfirm.name)} className="flex-1 bg-red-600 text-white py-2 rounded-2xl">نعم، احذف</button><button onClick={()=>setShowDeleteServantConfirm(null)} className="flex-1 bg-gray-200 py-2 rounded-2xl">إلغاء</button></div></div></div>)}
                 </div>
             );
         };
