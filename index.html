@@ -61,6 +61,13 @@
         .stat-card:hover {
             transform: translateY(-3px);
         }
+        /* تنسيق سطح المكتب */
+        @media (min-width: 1024px) {
+            .container-max {
+                max-width: 1200px;
+                margin: 0 auto;
+            }
+        }
     </style>
 </head>
 <body>
@@ -72,8 +79,9 @@
         const CLASSES = ["أولى إعدادي", "ثانية إعدادي", "ثالثة إعدادي"];
         const MASTER_PASSWORD = "1427";
         
-        // هيكل التخزين: كل صف له بياناته المستقلة تماماً
-        const STORAGE_KEY = "mar_boulus_classes_data_v11";
+        // مفاتيح التخزين
+        const STORAGE_KEY_DATA = "mar_boulus_classes_data_v12";
+        const STORAGE_KEY_SESSION = "mar_boulus_session";
         
         const getEmptyClassData = () => ({
             students: [],
@@ -83,7 +91,7 @@
         
         const loadAllData = () => {
             try {
-                const raw = localStorage.getItem(STORAGE_KEY);
+                const raw = localStorage.getItem(STORAGE_KEY_DATA);
                 if (raw) {
                     const parsed = JSON.parse(raw);
                     const completeData = {};
@@ -107,7 +115,26 @@
         };
         
         const saveAllData = (data) => {
-            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
+            try { localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(data)); } catch(e) {}
+        };
+        
+        // دوال جلسة المستخدم
+        const loadSession = () => {
+            try {
+                const session = localStorage.getItem(STORAGE_KEY_SESSION);
+                if (session) {
+                    return JSON.parse(session);
+                }
+            } catch(e) {}
+            return null;
+        };
+        
+        const saveSession = (session) => {
+            try { localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(session)); } catch(e) {}
+        };
+        
+        const clearSession = () => {
+            try { localStorage.removeItem(STORAGE_KEY_SESSION); } catch(e) {}
         };
         
         const genId = () => Date.now() + '-' + Math.random().toString(36).substr(2, 8);
@@ -136,7 +163,6 @@
             return upcoming.sort((a,b) => a.daysLeft - b.daysLeft);
         };
         
-        // دالة استيراد Excel - بدون اكتشاف الصف، نأخذ البيانات فقط ونطبق عليها الصف المختار يدوياً
         const parseExcelToStudents = (data, targetClass) => {
             const rows = XLSX.utils.sheet_to_json(data, { header: 1, defval: "" });
             if(rows.length < 2) return { students: [], errors: [] };
@@ -184,7 +210,7 @@
                 students.push({
                     name, phone, parentPhone, address, 
                     birthday: birthdayFmt, 
-                    class: targetClass,  // نضع الصف الذي اختاره المستخدم
+                    class: targetClass,
                     points: 0,
                     attendance: {},
                     teamId: null
@@ -235,13 +261,38 @@
                 setTimeout(() => setToastMessage(null), 2600);
             };
             
+            // حفظ البيانات تلقائياً عند أي تغيير
             useEffect(() => {
-                if (!loading) saveAllData(classesData);
+                if (!loading) {
+                    saveAllData(classesData);
+                }
             }, [classesData, loading]);
             
+            // استعادة الجلسة عند تحميل التطبيق
             useEffect(() => {
+                const savedSession = loadSession();
+                if (savedSession && savedSession.loggedIn && savedSession.servantName && savedSession.selectedClass) {
+                    setLoggedIn(true);
+                    setServantName(savedSession.servantName);
+                    setSelectedClass(savedSession.selectedClass);
+                    setActiveTab(savedSession.activeTab || "home");
+                }
                 setLoading(false);
             }, []);
+            
+            // حفظ الجلسة عند تغيير حالة الدخول أو اسم الخادم أو التبويب أو الصف
+            useEffect(() => {
+                if (loggedIn && servantName) {
+                    saveSession({
+                        loggedIn: true,
+                        servantName: servantName,
+                        selectedClass: selectedClass,
+                        activeTab: activeTab
+                    });
+                } else if (!loggedIn) {
+                    clearSession();
+                }
+            }, [loggedIn, servantName, selectedClass, activeTab]);
             
             const getCurrentClassData = () => classesData[selectedClass] || { students: [], teams: [], servantsHistory: [] };
             
@@ -278,7 +329,13 @@
                 showToast(`مرحباً ${servantName} - ${selectedClass}`);
             };
             
-            const handleLogout = () => { setLoggedIn(false); setServantName(""); setPassword(""); };
+            const handleLogout = () => { 
+                setLoggedIn(false); 
+                setServantName(""); 
+                setPassword("");
+                clearSession();
+                showToast("تم تسجيل الخروج");
+            };
             
             const changeClass = (newClass) => {
                 setSelectedClass(newClass);
@@ -315,7 +372,6 @@
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
                     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                    // نمرر الصف المختار يدوياً - بدون أي اكتشاف تلقائي
                     const { students: parsedStudents, errors } = parseExcelToStudents(sheet, importClass);
                     
                     if(parsedStudents.length === 0) {
@@ -339,7 +395,7 @@
                     points: 0,
                     attendance: {},
                     teamId: null,
-                    class: importClass  // تأكيد الصف المختار
+                    class: importClass
                 }));
                 updateCurrentClass(data => ({
                     ...data,
@@ -503,6 +559,7 @@
             const totalTeamPoints = currentTeams.reduce((sum, t) => sum + (t.teamPoints || 0), 0);
             const attendanceToday = filteredStudents.filter(s => s.attendance?.[selectedDate] === true).length;
             
+            // إذا كان loading أو غير مسجل دخول، نظهر الشاشة المناسبة
             if(loading) {
                 return <div className="h-screen flex items-center justify-center gradient-bg"><i className="fas fa-church text-6xl text-purple-400 animate-pulse"></i></div>;
             }
@@ -517,7 +574,7 @@
                                 </div>
                                 <h1 className="text-3xl font-bold text-purple-700">مار بولس الرسول</h1>
                                 <p className="text-gray-500 text-sm mt-1">نظام مدارس الأحد • المرحلة الإعدادية</p>
-                                <p className="text-xs text-purple-400 mt-1">بيانات منفصلة لكل صف دراسي</p>
+                                <p className="text-xs text-purple-400 mt-1">بيانات منفصلة لكل صف دراسي - حفظ تلقائي</p>
                             </div>
                             <div className="mb-4">
                                 <label className="block text-sm font-medium text-gray-600 mb-1">اختر الصف الدراسي</label>
@@ -612,16 +669,6 @@
                             </div>
                         </div>
                     )}
-                    
-                    <div className="glass-card p-4">
-                        <h4 className="font-bold mb-2">إحصائيات {selectedClass}</h4>
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                            <div>عدد الفرق: {currentTeams.length}</div>
-                            <div>طلاب منضمين: {currentStudents.filter(s => s.teamId).length}</div>
-                            <div>طلاب بدون فريق: {currentStudents.filter(s => !s.teamId).length}</div>
-                            <div>إجمالي نقاط الفرق: {totalTeamPoints}</div>
-                        </div>
-                    </div>
                 </div>
             );
             
@@ -776,9 +823,6 @@
                                         );
                                     })}
                                 </div>
-                                {currentStudents.filter(s => s.birthday).length === 0 && (
-                                    <div className="text-center text-gray-400 py-10"><i className="fas fa-cake-candles text-5xl mb-2"></i><p>لا توجد أعياد ميلاد مسجلة في {selectedClass}</p></div>
-                                )}
                             </div>
                         )}
                         
@@ -791,7 +835,6 @@
                                         <span className="text-amber-600 font-bold">{s.points||0} نقطة</span>
                                     </div>
                                 ))}
-                                {currentStudents.length === 0 && <div className="text-center text-gray-400 py-10">لا يوجد طلاب</div>}
                             </div>
                         )}
                         
@@ -805,7 +848,6 @@
                                             <span className="text-xs text-gray-400">{s.lastLogin}</span>
                                         </div>
                                     ))}
-                                    {currentServantsHistory.length === 0 && <div className="text-center text-gray-400 py-10">لا يوجد خدام مسجلين في {selectedClass}</div>}
                                 </div>
                             </div>
                         )}
@@ -826,7 +868,7 @@
                         </button>
                     )}
                     
-                    {/* مودال استيراد Excel - بدون خاصية الاكتشاف */}
+                    {/* المودالات... */}
                     {showImportModal && (
                         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={()=>setShowImportModal(false)}>
                             <div className="bg-white rounded-3xl p-6 w-full max-w-md" onClick={e=>e.stopPropagation()}>
