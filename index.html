@@ -34,6 +34,33 @@
         }
         .hide-scroll::-webkit-scrollbar { width: 3px; }
         .hide-scroll::-webkit-scrollbar-thumb { background: #c084fc; border-radius: 10px; }
+        .toast-notification {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1f2937;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-size: 14px;
+            z-index: 2000;
+            animation: fadeUp 0.3s ease;
+        }
+        @keyframes fadeUp {
+            from { opacity: 0; bottom: 60px; }
+            to { opacity: 1; bottom: 80px; }
+        }
+        .class-tab-active {
+            background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+        }
+        .stat-card {
+            transition: transform 0.2s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-3px);
+        }
     </style>
 </head>
 <body>
@@ -45,21 +72,42 @@
         const CLASSES = ["أولى إعدادي", "ثانية إعدادي", "ثالثة إعدادي"];
         const MASTER_PASSWORD = "1427";
         
-        const STORAGE_KEYS = {
-            STUDENTS: "mar_boulus_students_v7",
-            SERVANTS: "mar_boulus_servants_v7",
-            TEAMS: "mar_boulus_teams_v7"
+        // هيكل التخزين: كل صف له بياناته المستقلة تماماً
+        const STORAGE_KEY = "mar_boulus_classes_data_v11";
+        
+        const getEmptyClassData = () => ({
+            students: [],
+            teams: [],
+            servantsHistory: []
+        });
+        
+        const loadAllData = () => {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    const completeData = {};
+                    CLASSES.forEach(c => {
+                        if (parsed[c]) {
+                            completeData[c] = {
+                                students: parsed[c].students || [],
+                                teams: parsed[c].teams || [],
+                                servantsHistory: parsed[c].servantsHistory || []
+                            };
+                        } else {
+                            completeData[c] = getEmptyClassData();
+                        }
+                    });
+                    return completeData;
+                }
+            } catch(e) {}
+            const defaultData = {};
+            CLASSES.forEach(c => { defaultData[c] = getEmptyClassData(); });
+            return defaultData;
         };
         
-        const loadData = (key, def=[]) => { 
-            try { 
-                const raw = localStorage.getItem(key); 
-                return raw ? JSON.parse(raw) : def; 
-            } catch(e) { return def; } 
-        };
-        
-        const saveData = (key, data) => { 
-            try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {} 
+        const saveAllData = (data) => {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
         };
         
         const genId = () => Date.now() + '-' + Math.random().toString(36).substr(2, 8);
@@ -88,10 +136,10 @@
             return upcoming.sort((a,b) => a.daysLeft - b.daysLeft);
         };
         
-        // دالة استيراد Excel
-        const parseExcelToStudents = (data, manualClass, detectClassColumn = true) => {
+        // دالة استيراد Excel - بدون اكتشاف الصف، نأخذ البيانات فقط ونطبق عليها الصف المختار يدوياً
+        const parseExcelToStudents = (data, targetClass) => {
             const rows = XLSX.utils.sheet_to_json(data, { header: 1, defval: "" });
-            if(rows.length < 2) return { students: [], errors: [], classMapping: {} };
+            if(rows.length < 2) return { students: [], errors: [] };
             
             const headers = rows[0].map(cell => String(cell || "").trim().toLowerCase());
             
@@ -100,14 +148,11 @@
             const parentIdx = headers.findIndex(h => h.includes("ولي") || h === "parent" || h.includes("والد"));
             const addrIdx = headers.findIndex(h => h.includes("عنوان") || h === "address");
             const birthIdx = headers.findIndex(h => h.includes("ميلاد") || h.includes("تاريخ") || h === "birthday" || h === "dob");
-            const classIdx = headers.findIndex(h => h.includes("صف") || h === "class" || h.includes("المرحلة") || h.includes("الفصل"));
             
             let nIdx = nameIdx !== -1 ? nameIdx : 0;
             let pIdx = phoneIdx !== -1 ? phoneIdx : (headers.length > 1 ? 1 : -1);
             
             const students = [];
-            const classMapping = {};
-            const validClasses = CLASSES;
             
             for(let i=1; i<rows.length; i++) {
                 let row = rows[i];
@@ -136,26 +181,24 @@
                     }
                 }
                 
-                let targetClass = manualClass;
-                if(detectClassColumn && classIdx !== -1 && row[classIdx]) {
-                    let classRaw = String(row[classIdx]).trim();
-                    let matchedClass = validClasses.find(c => classRaw.includes(c) || c.includes(classRaw));
-                    if(matchedClass) {
-                        targetClass = matchedClass;
-                        classMapping[classRaw] = matchedClass;
-                    }
-                }
-                
                 students.push({
                     name, phone, parentPhone, address, 
                     birthday: birthdayFmt, 
-                    class: targetClass,
+                    class: targetClass,  // نضع الصف الذي اختاره المستخدم
                     points: 0,
                     attendance: {},
                     teamId: null
                 });
             }
-            return { students, errors: [], classMapping };
+            return { students, errors: [] };
+        };
+        
+        const Toast = ({ message, onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 2500);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+            return <div className="toast-notification">{message}</div>;
         };
         
         const App = () => {
@@ -164,11 +207,9 @@
             const [password, setPassword] = useState("");
             const [error, setError] = useState("");
             const [activeTab, setActiveTab] = useState("home");
-            const [students, setStudents] = useState([]);
-            const [servants, setServants] = useState([]);
-            const [teams, setTeams] = useState([]);
-            const [loading, setLoading] = useState(true);
             const [selectedClass, setSelectedClass] = useState(CLASSES[0]);
+            const [classesData, setClassesData] = useState(() => loadAllData());
+            const [loading, setLoading] = useState(true);
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
             const [search, setSearch] = useState("");
             const [showAddModal, setShowAddModal] = useState(false);
@@ -178,10 +219,7 @@
             const [editingStudent, setEditingStudent] = useState(null);
             const [importPreview, setImportPreview] = useState([]);
             const [importClass, setImportClass] = useState(CLASSES[0]);
-            const [importDetectClass, setImportDetectClass] = useState(true);
             const [importInfo, setImportInfo] = useState("");
-            
-            // State للفرق
             const [showTeamModal, setShowTeamModal] = useState(false);
             const [newTeamName, setNewTeamName] = useState("");
             const [editingTeam, setEditingTeam] = useState(null);
@@ -190,49 +228,84 @@
             const [pointsTeamId, setPointsTeamId] = useState(null);
             const [pointsAmount, setPointsAmount] = useState(5);
             const [pointsReason, setPointsReason] = useState("");
+            const [toastMessage, setToastMessage] = useState(null);
             
-            // تحميل البيانات
+            const showToast = (msg) => {
+                setToastMessage(msg);
+                setTimeout(() => setToastMessage(null), 2600);
+            };
+            
             useEffect(() => {
-                const storedStudents = loadData(STORAGE_KEYS.STUDENTS, []);
-                const storedTeams = loadData(STORAGE_KEYS.TEAMS, []);
-                const storedServants = loadData(STORAGE_KEYS.SERVANTS, []);
-                setStudents(storedStudents);
-                setTeams(storedTeams);
-                setServants(storedServants);
+                if (!loading) saveAllData(classesData);
+            }, [classesData, loading]);
+            
+            useEffect(() => {
                 setLoading(false);
             }, []);
             
-            useEffect(() => { if(!loading) saveData(STORAGE_KEYS.STUDENTS, students); }, [students, loading]);
-            useEffect(() => { if(!loading) saveData(STORAGE_KEYS.TEAMS, teams); }, [teams, loading]);
-            useEffect(() => { if(!loading) saveData(STORAGE_KEYS.SERVANTS, servants); }, [servants, loading]);
+            const getCurrentClassData = () => classesData[selectedClass] || { students: [], teams: [], servantsHistory: [] };
+            
+            const updateCurrentClass = (updater) => {
+                setClassesData(prev => ({
+                    ...prev,
+                    [selectedClass]: updater(prev[selectedClass] || { students: [], teams: [], servantsHistory: [] })
+                }));
+            };
+            
+            const currentStudents = getCurrentClassData().students;
+            const currentTeams = getCurrentClassData().teams;
+            const currentServantsHistory = getCurrentClassData().servantsHistory;
             
             const handleLogin = () => {
                 if(!servantName.trim()) { setError("الرجاء إدخال اسم الخادم"); return; }
                 if(password !== MASTER_PASSWORD) { setError("كلمة المرور غير صحيحة"); return; }
-                const exists = servants.find(s => s.name === servantName);
+                
+                const existingServants = currentServantsHistory;
+                const exists = existingServants.find(s => s.name === servantName);
                 if(!exists) {
-                    setServants(prev => [...prev, { id: genId(), name: servantName, lastLogin: new Date().toLocaleString('ar-EG') }]);
+                    updateCurrentClass(data => ({
+                        ...data,
+                        servantsHistory: [...data.servantsHistory, { id: genId(), name: servantName, lastLogin: new Date().toLocaleString('ar-EG') }]
+                    }));
+                } else {
+                    updateCurrentClass(data => ({
+                        ...data,
+                        servantsHistory: data.servantsHistory.map(s => s.name === servantName ? { ...s, lastLogin: new Date().toLocaleString('ar-EG') } : s)
+                    }));
                 }
                 setLoggedIn(true);
                 setError("");
+                showToast(`مرحباً ${servantName} - ${selectedClass}`);
             };
             
             const handleLogout = () => { setLoggedIn(false); setServantName(""); setPassword(""); };
             
+            const changeClass = (newClass) => {
+                setSelectedClass(newClass);
+                setSearch("");
+                setSelectedTeamId(null);
+                setSelectedStudents([]);
+                showToast(`✅ تم التبديل إلى ${newClass}`);
+            };
+            
             const addStudent = () => {
                 if(!newStudent.name || !newStudent.phone) { alert("الاسم والتليفون مطلوبين"); return; }
-                setStudents(prev => [...prev, {
-                    id: genId(),
-                    ...newStudent,
-                    class: selectedClass,
-                    points: 0,
-                    attendance: {},
-                    teamId: null,
-                    addedBy: servantName,
-                    addedDate: new Date().toLocaleString('ar-EG')
-                }]);
+                updateCurrentClass(data => ({
+                    ...data,
+                    students: [...data.students, {
+                        id: genId(),
+                        ...newStudent,
+                        class: selectedClass,
+                        points: 0,
+                        attendance: {},
+                        teamId: null,
+                        addedBy: servantName,
+                        addedDate: new Date().toLocaleString('ar-EG')
+                    }]
+                }));
                 setNewStudent({ name:"", phone:"", parentPhone:"", address:"", birthday:"" });
                 setShowAddModal(false);
+                showToast(`تم إضافة ${newStudent.name} إلى ${selectedClass}`);
             };
             
             const handleFileUpload = (file) => {
@@ -242,20 +315,15 @@
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
                     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const { students: parsedStudents, errors, classMapping } = parseExcelToStudents(sheet, importClass, importDetectClass);
+                    // نمرر الصف المختار يدوياً - بدون أي اكتشاف تلقائي
+                    const { students: parsedStudents, errors } = parseExcelToStudents(sheet, importClass);
                     
                     if(parsedStudents.length === 0) {
-                        alert("❌ لم يتم العثور على بيانات صالحة");
+                        alert("❌ لم يتم العثور على بيانات صالحة في الملف");
                         return;
                     }
                     
-                    const classCount = {};
-                    parsedStudents.forEach(s => { classCount[s.class] = (classCount[s.class] || 0) + 1; });
-                    let infoText = `📊 تم قراءة ${parsedStudents.length} طالب.\n`;
-                    for(const [cls, count] of Object.entries(classCount)) {
-                        infoText += `• الصف ${cls}: ${count} طالب\n`;
-                    }
-                    setImportInfo(infoText);
+                    setImportInfo(`📊 تم قراءة ${parsedStudents.length} طالب، سيتم إضافتهم إلى صف ${importClass}`);
                     setImportPreview(parsedStudents);
                 };
                 reader.readAsArrayBuffer(file);
@@ -270,10 +338,14 @@
                     addedDate: new Date().toLocaleString('ar-EG'),
                     points: 0,
                     attendance: {},
-                    teamId: null
+                    teamId: null,
+                    class: importClass  // تأكيد الصف المختار
                 }));
-                setStudents(prev => [...prev, ...withIds]);
-                alert(`✅ تم استيراد ${withIds.length} طالب بنجاح!`);
+                updateCurrentClass(data => ({
+                    ...data,
+                    students: [...data.students, ...withIds]
+                }));
+                showToast(`✅ تم استيراد ${withIds.length} طالب إلى ${importClass}`);
                 setImportPreview([]);
                 setImportInfo("");
                 setShowImportModal(false);
@@ -281,24 +353,40 @@
             
             const updateStudent = () => {
                 if(!editingStudent.name || !editingStudent.phone) { alert("الاسم والتليفون مطلوبين"); return; }
-                setStudents(prev => prev.map(s => s.id === editingStudent.id ? editingStudent : s));
+                updateCurrentClass(data => ({
+                    ...data,
+                    students: data.students.map(s => s.id === editingStudent.id ? { ...editingStudent, class: selectedClass } : s)
+                }));
                 setEditingStudent(null);
+                showToast("تم تحديث البيانات");
             };
             
             const deleteStudent = (id, name) => {
-                if(confirm(`حذف ${name} نهائياً؟`)) {
-                    setStudents(prev => prev.filter(s => s.id !== id));
+                if(confirm(`حذف ${name} نهائياً من ${selectedClass}؟`)) {
+                    updateCurrentClass(data => ({
+                        ...data,
+                        students: data.students.filter(s => s.id !== id)
+                    }));
+                    showToast(`تم حذف ${name}`);
                 }
             };
             
             const addPersonalPoints = (id, amount = 5) => {
-                setStudents(prev => prev.map(s => s.id === id ? { ...s, points: (s.points || 0) + amount } : s));
+                updateCurrentClass(data => ({
+                    ...data,
+                    students: data.students.map(s => s.id === id ? { ...s, points: (s.points || 0) + amount } : s)
+                }));
+                showToast(`✨ تم إضافة ${amount} نقطة شخصية`);
             };
             
             const updateAttendance = (ids, status) => {
                 if(!ids.length) { alert("اختر طالباً واحداً على الأقل"); return; }
-                setStudents(prev => prev.map(s => ids.includes(s.id) ? { ...s, attendance: { ...(s.attendance || {}), [selectedDate]: status } } : s));
+                updateCurrentClass(data => ({
+                    ...data,
+                    students: data.students.map(s => ids.includes(s.id) ? { ...s, attendance: { ...(s.attendance || {}), [selectedDate]: status } } : s)
+                }));
                 setSelectedStudents([]);
+                showToast(status ? "✅ تم تسجيل الحضور" : "❌ تم تسجيل الغياب");
             };
             
             const getAttendanceRate = (student) => {
@@ -307,91 +395,113 @@
                 return Math.round((records.filter(r => r === true).length / records.length) * 100);
             };
             
-            // دوال الفرق
             const createTeam = () => {
                 if(!newTeamName.trim()) { alert("الرجاء إدخال اسم الفريق"); return; }
-                if(teams.find(t => t.name === newTeamName.trim())) { alert("يوجد فريق بنفس الاسم"); return; }
-                setTeams([...teams, {
-                    id: genId(),
-                    name: newTeamName.trim(),
-                    createdAt: new Date().toLocaleString('ar-EG'),
-                    createdBy: servantName,
-                    teamPoints: 0,
-                    pointsHistory: []
-                }]);
+                if(currentTeams.find(t => t.name === newTeamName.trim())) { alert("يوجد فريق بنفس الاسم في هذا الصف"); return; }
+                updateCurrentClass(data => ({
+                    ...data,
+                    teams: [...data.teams, {
+                        id: genId(),
+                        name: newTeamName.trim(),
+                        createdAt: new Date().toLocaleString('ar-EG'),
+                        createdBy: servantName,
+                        teamPoints: 0,
+                        pointsHistory: []
+                    }]
+                }));
                 setNewTeamName("");
                 setShowTeamModal(false);
+                showToast(`فريق ${newTeamName} تم إنشاؤه في ${selectedClass}`);
             };
             
             const updateTeam = () => {
                 if(!editingTeam.name.trim()) { alert("الرجاء إدخال اسم الفريق"); return; }
-                setTeams(teams.map(t => t.id === editingTeam.id ? { ...t, name: editingTeam.name } : t));
+                updateCurrentClass(data => ({
+                    ...data,
+                    teams: data.teams.map(t => t.id === editingTeam.id ? { ...t, name: editingTeam.name } : t)
+                }));
                 setEditingTeam(null);
                 setShowTeamModal(false);
+                showToast("تم تحديث الفريق");
             };
             
             const deleteTeam = (teamId, teamName) => {
-                if(confirm(`حذف فريق "${teamName}" نهائياً؟`)) {
-                    setStudents(students.map(s => s.teamId === teamId ? { ...s, teamId: null } : s));
-                    setTeams(teams.filter(t => t.id !== teamId));
+                if(confirm(`حذف فريق "${teamName}" نهائياً من ${selectedClass}؟`)) {
+                    updateCurrentClass(data => ({
+                        ...data,
+                        students: data.students.map(s => s.teamId === teamId ? { ...s, teamId: null } : s),
+                        teams: data.teams.filter(t => t.id !== teamId)
+                    }));
                     if(selectedTeamId === teamId) setSelectedTeamId(null);
+                    showToast(`تم حذف فريق ${teamName}`);
                 }
             };
             
             const addTeamPoints = (teamId, amount, reason) => {
-                setTeams(teams.map(t => {
-                    if(t.id === teamId) {
-                        const newPoints = (t.teamPoints || 0) + amount;
-                        const newHistory = [...(t.pointsHistory || []), {
-                            id: genId(),
-                            amount: amount,
-                            reason: reason || "نقاط إضافية",
-                            addedBy: servantName,
-                            date: new Date().toLocaleString('ar-EG'),
-                            newTotal: newPoints
-                        }];
-                        return { ...t, teamPoints: newPoints, pointsHistory: newHistory };
-                    }
-                    return t;
+                updateCurrentClass(data => ({
+                    ...data,
+                    teams: data.teams.map(t => {
+                        if(t.id === teamId) {
+                            const newPoints = (t.teamPoints || 0) + amount;
+                            const newHistory = [...(t.pointsHistory || []), {
+                                id: genId(),
+                                amount: amount,
+                                reason: reason || "نقاط إضافية",
+                                addedBy: servantName,
+                                date: new Date().toLocaleString('ar-EG'),
+                                newTotal: newPoints
+                            }];
+                            return { ...t, teamPoints: newPoints, pointsHistory: newHistory };
+                        }
+                        return t;
+                    })
                 }));
                 setShowPointsModal(false);
                 setPointsAmount(5);
                 setPointsReason("");
                 setPointsTeamId(null);
+                showToast(`🏆 تم إضافة ${amount} نقطة للفريق في ${selectedClass}`);
             };
             
             const addPointsToAllTeamMembers = (teamId, amount) => {
-                const team = teams.find(t => t.id === teamId);
+                const team = currentTeams.find(t => t.id === teamId);
                 if(!team) return;
-                const memberIds = students.filter(s => s.teamId === teamId).map(s => s.id);
+                const memberIds = currentStudents.filter(s => s.teamId === teamId).map(s => s.id);
                 if(memberIds.length === 0) {
                     alert(`⚠️ لا يوجد أعضاء في فريق "${team.name}"`);
                     return;
                 }
-                setStudents(prev => prev.map(s => {
-                    if(memberIds.includes(s.id)) {
-                        return { ...s, points: (s.points || 0) + amount };
-                    }
-                    return s;
+                updateCurrentClass(data => ({
+                    ...data,
+                    students: data.students.map(s => memberIds.includes(s.id) ? { ...s, points: (s.points || 0) + amount } : s)
                 }));
-                alert(`✅ تم إضافة ${amount} نقطة شخصية لـ ${memberIds.length} عضو`);
+                showToast(`🎉 تم إضافة ${amount} نقطة شخصية لـ ${memberIds.length} عضو في ${selectedClass}`);
             };
             
             const assignToTeam = (studentId, teamId) => {
-                setStudents(students.map(s => s.id === studentId ? { ...s, teamId: teamId } : s));
+                updateCurrentClass(data => ({
+                    ...data,
+                    students: data.students.map(s => s.id === studentId ? { ...s, teamId: teamId } : s)
+                }));
+                showToast("تم إضافة الطالب للفريق");
             };
             
             const removeFromTeam = (studentId) => {
-                setStudents(students.map(s => s.id === studentId ? { ...s, teamId: null } : s));
+                updateCurrentClass(data => ({
+                    ...data,
+                    students: data.students.map(s => s.id === studentId ? { ...s, teamId: null } : s)
+                }));
+                showToast("تم إزالة الطالب من الفريق");
             };
             
-            const getTeamMembers = (teamId) => students.filter(s => s.teamId === teamId);
-            
-            const filteredStudents = students.filter(s => s.class === selectedClass && (!search || s.name.includes(search)));
-            const selectedTeam = teams.find(t => t.id === selectedTeamId);
-            const teamMembers = selectedTeam ? getTeamMembers(selectedTeam.id) : [];
-            const rankedTeams = [...teams].sort((a, b) => (b.teamPoints || 0) - (a.teamPoints || 0));
-            const upcomingBirthdays = getUpcomingBirthdays(students);
+            const filteredStudents = currentStudents.filter(s => (!search || s.name.includes(search)));
+            const selectedTeam = currentTeams.find(t => t.id === selectedTeamId);
+            const teamMembers = selectedTeam ? currentStudents.filter(s => s.teamId === selectedTeam.id) : [];
+            const rankedTeams = [...currentTeams].sort((a, b) => (b.teamPoints || 0) - (a.teamPoints || 0));
+            const upcomingBirthdays = getUpcomingBirthdays(currentStudents);
+            const totalPoints = currentStudents.reduce((sum, s) => sum + (s.points || 0), 0);
+            const totalTeamPoints = currentTeams.reduce((sum, t) => sum + (t.teamPoints || 0), 0);
+            const attendanceToday = filteredStudents.filter(s => s.attendance?.[selectedDate] === true).length;
             
             if(loading) {
                 return <div className="h-screen flex items-center justify-center gradient-bg"><i className="fas fa-church text-6xl text-purple-400 animate-pulse"></i></div>;
@@ -402,11 +512,22 @@
                     <div className="min-h-screen gradient-bg flex items-center justify-center p-5">
                         <div className="glass-card w-full max-w-md p-7">
                             <div className="text-center mb-6">
-                                <div className="w-20 h-20 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-3xl flex items-center justify-center mx-auto mb-4">
-                                    <i className="fas fa-cross text-4xl text-purple-600"></i>
+                                <div className="w-24 h-24 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-md">
+                                    <i className="fas fa-cross text-5xl text-purple-600"></i>
                                 </div>
-                                <h1 className="text-2xl font-bold text-purple-700">مار بولس الرسول</h1>
+                                <h1 className="text-3xl font-bold text-purple-700">مار بولس الرسول</h1>
                                 <p className="text-gray-500 text-sm mt-1">نظام مدارس الأحد • المرحلة الإعدادية</p>
+                                <p className="text-xs text-purple-400 mt-1">بيانات منفصلة لكل صف دراسي</p>
+                            </div>
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium text-gray-600 mb-1">اختر الصف الدراسي</label>
+                                <div className="flex gap-2">
+                                    {CLASSES.map(c => (
+                                        <button key={c} onClick={() => setSelectedClass(c)} className={`flex-1 py-2 rounded-xl text-sm font-semibold transition ${selectedClass === c ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                                            {c}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                             {error && <div className="bg-red-50 text-red-600 p-3 rounded-2xl text-sm mb-4 text-center">{error}</div>}
                             <div className="space-y-3">
@@ -422,11 +543,11 @@
             const TeamsPanel = () => (
                 <div className="space-y-4">
                     <div className="flex justify-between items-center">
-                        <h2 className="font-bold text-xl"><i className="fas fa-users text-purple-500 ml-2"></i>الفرق</h2>
+                        <h2 className="font-bold text-xl"><i className="fas fa-users text-purple-500 ml-2"></i>الفرق - {selectedClass}</h2>
                         <button onClick={() => { setEditingTeam(null); setNewTeamName(""); setShowTeamModal(true); }} className="bg-purple-600 text-white px-4 py-2 rounded-full text-sm"><i className="fas fa-plus ml-1"></i>فريق جديد</button>
                     </div>
                     
-                    {teams.length > 0 && (
+                    {currentTeams.length > 0 && (
                         <div className="glass-card p-4">
                             <h3 className="font-bold mb-2"><i className="fas fa-trophy text-amber-500"></i> ترتيب الفرق (نقاط جماعية)</h3>
                             {rankedTeams.map((team, idx) => (
@@ -445,80 +566,60 @@
                     )}
                     
                     <div className="flex flex-wrap gap-2">
-                        {teams.map(team => (
+                        {currentTeams.map(team => (
                             <button key={team.id} onClick={() => setSelectedTeamId(team.id)} className={`px-4 py-2 rounded-full text-sm ${selectedTeamId === team.id ? 'bg-purple-600 text-white' : 'bg-white text-purple-600 border border-purple-200'}`}>
                                 {team.name} ({team.teamPoints || 0})
                             </button>
                         ))}
-                        {teams.length === 0 && <p className="text-gray-400">لا توجد فرق، أضف فريقاً جديداً</p>}
+                        {currentTeams.length === 0 && <p className="text-gray-400">لا توجد فرق في {selectedClass}، أضف فريقاً جديداً</p>}
                     </div>
                     
                     {selectedTeam && (
                         <div className="glass-card p-5">
                             <div className="flex justify-between items-center border-b pb-3 mb-3">
-                                <div>
-                                    <h3 className="font-bold text-lg">{selectedTeam.name}</h3>
-                                    <p className="text-xs text-gray-400">تاريخ الإنشاء: {selectedTeam.createdAt}</p>
-                                </div>
+                                <div><h3 className="font-bold text-lg">{selectedTeam.name}</h3><p className="text-xs text-gray-400">{selectedTeam.createdAt}</p></div>
                                 <div className="flex gap-2">
-                                    <button onClick={() => { setEditingTeam({...selectedTeam}); setShowTeamModal(true); }} className="text-blue-500 text-sm bg-blue-50 px-3 py-1 rounded-full"><i className="fas fa-edit"></i> تعديل</button>
-                                    <button onClick={() => deleteTeam(selectedTeam.id, selectedTeam.name)} className="text-red-500 text-sm bg-red-50 px-3 py-1 rounded-full"><i className="fas fa-trash"></i> حذف</button>
+                                    <button onClick={() => { setEditingTeam({...selectedTeam}); setShowTeamModal(true); }} className="text-blue-500 text-sm bg-blue-50 px-3 py-1 rounded-full"><i className="fas fa-edit"></i></button>
+                                    <button onClick={() => deleteTeam(selectedTeam.id, selectedTeam.name)} className="text-red-500 text-sm bg-red-50 px-3 py-1 rounded-full"><i className="fas fa-trash"></i></button>
                                 </div>
                             </div>
-                            
                             <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl p-4 mb-4 text-center">
                                 <div className="text-sm text-gray-500">نقاط الفريق الجماعية</div>
                                 <div className="text-4xl font-bold text-purple-700">{selectedTeam.teamPoints || 0}</div>
                                 <div className="flex gap-2 justify-center mt-2">
-                                    <button onClick={() => { setPointsTeamId(selectedTeam.id); setShowPointsModal(true); }} className="bg-green-500 text-white px-4 py-1 rounded-full text-sm"><i className="fas fa-plus-circle"></i> إضافة نقاط للفريق</button>
+                                    <button onClick={() => { setPointsTeamId(selectedTeam.id); setShowPointsModal(true); }} className="bg-green-500 text-white px-4 py-1 rounded-full text-sm"><i className="fas fa-plus-circle"></i> إضافة نقاط</button>
                                     <button onClick={() => addPointsToAllTeamMembers(selectedTeam.id, 5)} className="bg-amber-500 text-white px-4 py-1 rounded-full text-sm"><i className="fas fa-users"></i> +5 لكل الأعضاء</button>
                                 </div>
                             </div>
-                            
                             <h4 className="font-semibold mb-2">أعضاء الفريق ({teamMembers.length})</h4>
-                            {teamMembers.length === 0 ? (
-                                <div className="text-center text-gray-400 p-4 bg-gray-50 rounded-2xl">لا يوجد أعضاء</div>
-                            ) : (
+                            {teamMembers.length === 0 ? <div className="text-center text-gray-400 p-4 bg-gray-50 rounded-2xl">لا يوجد أعضاء</div> : (
                                 <div className="space-y-2 max-h-64 overflow-auto">
                                     {teamMembers.map(m => (
                                         <div key={m.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-2xl">
-                                            <div>
-                                                <div className="font-bold">{m.name}</div>
-                                                <div className="text-xs text-gray-500">{m.class} • نقاط شخصية: {m.points || 0}</div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => addPersonalPoints(m.id, 5)} className="text-amber-600 text-xs bg-amber-50 px-2 py-1 rounded-full"><i className="fas fa-star"></i> +5</button>
-                                                <button onClick={() => removeFromTeam(m.id)} className="text-red-500 text-xs bg-white px-2 py-1 rounded-full">إزالة</button>
-                                            </div>
+                                            <div><div className="font-bold">{m.name}</div><div className="text-xs text-gray-500">نقاط شخصية: {m.points || 0}</div></div>
+                                            <div className="flex gap-2"><button onClick={() => addPersonalPoints(m.id, 5)} className="text-amber-600 text-xs bg-amber-50 px-2 py-1 rounded-full"><i className="fas fa-star"></i> +5</button><button onClick={() => removeFromTeam(m.id)} className="text-red-500 text-xs bg-white px-2 py-1 rounded-full">إزالة</button></div>
                                         </div>
                                     ))}
                                 </div>
                             )}
-                            
-                            <div className="mt-4 pt-3 border-t">
-                                <h4 className="font-semibold mb-2">إضافة طلاب للفريق</h4>
+                            <div className="mt-4 pt-3 border-t"><h4 className="font-semibold mb-2">إضافة طلاب للفريق</h4>
                                 <div className="space-y-2 max-h-48 overflow-auto">
-                                    {students.filter(s => !s.teamId && s.class === selectedClass).map(s => (
-                                        <div key={s.id} className="flex justify-between items-center bg-purple-50 p-2 rounded-xl">
-                                            <span>{s.name} - {s.class}</span>
-                                            <button onClick={() => assignToTeam(s.id, selectedTeam.id)} className="bg-purple-600 text-white text-xs px-3 py-1 rounded-full">إضافة</button>
-                                        </div>
+                                    {currentStudents.filter(s => !s.teamId).map(s => (
+                                        <div key={s.id} className="flex justify-between items-center bg-purple-50 p-2 rounded-xl"><span>{s.name}</span><button onClick={() => assignToTeam(s.id, selectedTeam.id)} className="bg-purple-600 text-white text-xs px-3 py-1 rounded-full">إضافة</button></div>
                                     ))}
-                                    {students.filter(s => !s.teamId && s.class === selectedClass).length === 0 && (
-                                        <p className="text-gray-400 text-sm">لا يوجد طلاب غير منضمين</p>
-                                    )}
+                                    {currentStudents.filter(s => !s.teamId).length === 0 && <p className="text-gray-400 text-sm">جميع الطلاب منضمين لفرق</p>}
                                 </div>
                             </div>
                         </div>
                     )}
                     
                     <div className="glass-card p-4">
-                        <h4 className="font-bold mb-2">إحصائيات الفرق</h4>
+                        <h4 className="font-bold mb-2">إحصائيات {selectedClass}</h4>
                         <div className="grid grid-cols-2 gap-2 text-sm">
-                            <div>عدد الفرق: {teams.length}</div>
-                            <div>طلاب منضمين: {students.filter(s => s.teamId).length}</div>
-                            <div>طلاب بدون فريق: {students.filter(s => !s.teamId).length}</div>
-                            <div>إجمالي نقاط الفرق: {teams.reduce((sum, t) => sum + (t.teamPoints || 0), 0)}</div>
+                            <div>عدد الفرق: {currentTeams.length}</div>
+                            <div>طلاب منضمين: {currentStudents.filter(s => s.teamId).length}</div>
+                            <div>طلاب بدون فريق: {currentStudents.filter(s => !s.teamId).length}</div>
+                            <div>إجمالي نقاط الفرق: {totalTeamPoints}</div>
                         </div>
                     </div>
                 </div>
@@ -526,18 +627,17 @@
             
             return (
                 <div className="gradient-bg h-screen flex flex-col overflow-hidden">
+                    {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
+                    
                     <div className="glass-card mx-4 mt-4 px-5 py-3 flex justify-between items-center">
-                        <div>
-                            <h1 className="text-lg font-bold text-purple-700"><i className="fas fa-church text-purple-500 ml-1"></i> مار بولس</h1>
-                            <p className="text-xs text-gray-400">مرحباً {servantName}</p>
-                        </div>
+                        <div><h1 className="text-lg font-bold text-purple-700"><i className="fas fa-church text-purple-500 ml-1"></i> مار بولس</h1><p className="text-xs text-gray-400">مرحباً {servantName} | {selectedClass}</p></div>
                         <button onClick={handleLogout} className="bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm"><i className="fas fa-sign-out-alt ml-1"></i> خروج</button>
                     </div>
                     
                     <div className="px-4 mt-3">
                         <div className="flex gap-2 overflow-x-auto pb-2 hide-scroll">
                             {CLASSES.map(c => (
-                                <button key={c} onClick={() => { setSelectedClass(c); setSearch(""); }} className={`px-5 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap ${selectedClass === c ? 'bg-purple-600 text-white' : 'bg-white text-gray-600 border'}`}>
+                                <button key={c} onClick={() => changeClass(c)} className={`px-5 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all ${selectedClass === c ? 'class-tab-active text-white shadow-md' : 'bg-white text-gray-600 border'}`}>
                                     {c}
                                 </button>
                             ))}
@@ -548,19 +648,19 @@
                         {activeTab === "home" && (
                             <div>
                                 <div className="grid grid-cols-3 gap-3 mb-5">
-                                    <div className="glass-card p-4 text-center">
+                                    <div className="glass-card p-4 text-center stat-card">
                                         <i className="fas fa-users text-2xl text-purple-500"></i>
-                                        <div className="text-2xl font-bold">{students.length}</div>
-                                        <div className="text-xs">إجمالي الطلاب</div>
+                                        <div className="text-2xl font-bold">{currentStudents.length}</div>
+                                        <div className="text-xs">طلاب {selectedClass}</div>
                                     </div>
-                                    <div className="glass-card p-4 text-center">
+                                    <div className="glass-card p-4 text-center stat-card">
                                         <i className="fas fa-trophy text-2xl text-amber-500"></i>
-                                        <div className="text-2xl font-bold">{students.reduce((a,b)=>a+(b.points||0),0)}</div>
+                                        <div className="text-2xl font-bold">{totalPoints}</div>
                                         <div className="text-xs">نقاط شخصية</div>
                                     </div>
-                                    <div className="glass-card p-4 text-center">
+                                    <div className="glass-card p-4 text-center stat-card">
                                         <i className="fas fa-medal text-2xl text-purple-500"></i>
-                                        <div className="text-2xl font-bold">{teams.reduce((a,b)=>a+(b.teamPoints||0),0)}</div>
+                                        <div className="text-2xl font-bold">{totalTeamPoints}</div>
                                         <div className="text-xs">نقاط الفرق</div>
                                     </div>
                                 </div>
@@ -571,10 +671,10 @@
                                     </div>
                                     <div className="flex justify-between text-sm mt-2">
                                         <span>{selectedClass}</span>
-                                        <span>{filteredStudents.filter(s=>s.attendance?.[selectedDate]===true).length} / {filteredStudents.length}</span>
+                                        <span>{attendanceToday} / {filteredStudents.length}</span>
                                     </div>
                                     <div className="mt-2 h-2 bg-gray-100 rounded-full">
-                                        <div className="bg-purple-500 h-full rounded-full" style={{width: `${filteredStudents.length ? (filteredStudents.filter(s=>s.attendance?.[selectedDate]===true).length / filteredStudents.length * 100) : 0}%`}}></div>
+                                        <div className="bg-purple-500 h-full rounded-full" style={{width: `${filteredStudents.length ? (attendanceToday / filteredStudents.length * 100) : 0}%`}}></div>
                                     </div>
                                 </div>
                             </div>
@@ -583,7 +683,7 @@
                         {activeTab === "students" && (
                             <div>
                                 <div className="flex justify-between items-center mb-4">
-                                    <h2 className="font-bold text-lg"><i className="fas fa-id-card text-purple-500"></i> كروت الطلاب</h2>
+                                    <h2 className="font-bold text-lg"><i className="fas fa-id-card text-purple-500"></i> كروت الطلاب - {selectedClass}</h2>
                                     <div className="flex gap-2">
                                         <button onClick={() => setShowImportModal(true)} className="bg-green-600 text-white px-4 py-2 rounded-full text-sm"><i className="fas fa-file-excel ml-1"></i> استيراد</button>
                                         <button onClick={() => setShowAddModal(true)} className="bg-purple-600 text-white px-4 py-2 rounded-full text-sm"><i className="fas fa-plus ml-1"></i> إضافة</button>
@@ -592,7 +692,7 @@
                                 <input type="text" placeholder="بحث بالاسم..." className="w-full p-3 border-0 rounded-2xl bg-white shadow-sm mb-4" value={search} onChange={e => setSearch(e.target.value)}/>
                                 <div className="space-y-3">
                                     {filteredStudents.map(s => {
-                                        const studentTeam = teams.find(t => t.id === s.teamId);
+                                        const studentTeam = currentTeams.find(t => t.id === s.teamId);
                                         return (
                                             <div key={s.id} className="glass-card p-4">
                                                 <div className="flex justify-between items-start">
@@ -619,14 +719,14 @@
                                             </div>
                                         );
                                     })}
-                                    {filteredStudents.length === 0 && <div className="text-center text-gray-400 py-10">لا يوجد طلاب</div>}
+                                    {filteredStudents.length === 0 && <div className="text-center text-gray-400 py-10">لا يوجد طلاب في {selectedClass}</div>}
                                 </div>
                             </div>
                         )}
                         
                         {activeTab === "attendance" && (
                             <div className="glass-card p-5">
-                                <h2 className="font-bold text-lg mb-3">تسجيل الحضور</h2>
+                                <h2 className="font-bold text-lg mb-3">تسجيل الحضور - {selectedClass}</h2>
                                 <input type="date" className="w-full p-3 border-0 rounded-2xl bg-gray-50 mb-4" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}/>
                                 <div className="flex gap-2 mb-4">
                                     <button onClick={() => setSelectedStudents(filteredStudents.map(s=>s.id))} className="bg-gray-700 text-white px-4 py-2 rounded-full text-sm">تحديد الكل</button>
@@ -646,91 +746,73 @@
                         
                         {activeTab === "teams" && <TeamsPanel />}
                         
-                        {/* تبويب أعياد الميلاد */}
                         {activeTab === "birthdays" && (
                             <div className="glass-card p-5">
-                                <h2 className="font-bold text-lg mb-3"><i className="fas fa-birthday-cake text-pink-500"></i> أعياد الميلاد</h2>
-                                
+                                <h2 className="font-bold text-lg mb-3"><i className="fas fa-birthday-cake text-pink-500"></i> أعياد الميلاد - {selectedClass}</h2>
                                 {upcomingBirthdays.length > 0 && (
                                     <div className="mb-5">
                                         <h3 className="font-semibold text-amber-700 mb-2"><i className="fas fa-star-of-life"></i> أعياد قادمة (30 يوماً)</h3>
                                         {upcomingBirthdays.map(s => (
                                             <div key={s.id} className="flex justify-between items-center p-2 border-b border-pink-100">
-                                                <div>
-                                                    <span className="font-bold">{s.name}</span>
-                                                    <span className="text-xs text-gray-500 mr-2">({s.class})</span>
-                                                </div>
+                                                <div><span className="font-bold">{s.name}</span></div>
                                                 <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-sm">بعد {s.daysLeft} يوم</span>
                                             </div>
                                         ))}
                                     </div>
                                 )}
-                                
-                                <h3 className="font-semibold mt-3 mb-2"><i className="fas fa-calendar-alt"></i> جميع التواريخ</h3>
+                                <h3 className="font-semibold mt-3 mb-2">جميع التواريخ</h3>
                                 <div className="space-y-1 max-h-96 overflow-auto">
-                                    {students.filter(s => s.birthday).sort((a,b) => {
-                                        let aMon = parseInt(a.birthday.split('-')[1]) || 0;
-                                        let bMon = parseInt(b.birthday.split('-')[1]) || 0;
+                                    {currentStudents.filter(s => s.birthday).sort((a,b) => {
+                                        let aMon = parseInt(a.birthday.split('-')[1])||0, bMon = parseInt(b.birthday.split('-')[1])||0;
                                         if(aMon !== bMon) return aMon - bMon;
-                                        let aDay = parseInt(a.birthday.split('-')[2]) || 0;
-                                        let bDay = parseInt(b.birthday.split('-')[2]) || 0;
-                                        return aDay - bDay;
+                                        return (parseInt(a.birthday.split('-')[2])||0) - (parseInt(b.birthday.split('-')[2])||0);
                                     }).map(s => {
                                         let p = s.birthday.split('-');
                                         return (
                                             <div key={s.id} className="flex justify-between items-center p-2 border-b border-gray-100">
-                                                <span>{s.name} <span className="text-xs text-gray-400">({s.class})</span></span>
+                                                <span>{s.name}</span>
                                                 <span className="text-purple-600 font-semibold">{p[2]}/{p[1]}</span>
                                             </div>
                                         );
                                     })}
                                 </div>
-                                
-                                {students.filter(s => s.birthday).length === 0 && (
-                                    <div className="text-center text-gray-400 py-10">
-                                        <i className="fas fa-cake-candles text-5xl mb-2"></i>
-                                        <p>لا توجد أعياد ميلاد مسجلة</p>
-                                        <button onClick={() => setShowAddModal(true)} className="mt-3 text-purple-600 text-sm">➕ أضف طالباً مع تاريخ ميلاده</button>
-                                    </div>
+                                {currentStudents.filter(s => s.birthday).length === 0 && (
+                                    <div className="text-center text-gray-400 py-10"><i className="fas fa-cake-candles text-5xl mb-2"></i><p>لا توجد أعياد ميلاد مسجلة في {selectedClass}</p></div>
                                 )}
                             </div>
                         )}
                         
                         {activeTab === "reports" && (
                             <div className="glass-card p-5">
-                                <h2 className="font-bold text-lg mb-3">ترتيب النقاط الشخصية</h2>
-                                {filteredStudents.sort((a,b)=>(b.points||0)-(a.points||0)).map((s,i) => (
+                                <h2 className="font-bold text-lg mb-3">ترتيب النقاط الشخصية - {selectedClass}</h2>
+                                {[...currentStudents].sort((a,b)=>(b.points||0)-(a.points||0)).map((s,i) => (
                                     <div key={s.id} className="flex justify-between p-2 border-b">
                                         <span>{i+1}. {s.name}</span>
                                         <span className="text-amber-600 font-bold">{s.points||0} نقطة</span>
                                     </div>
                                 ))}
+                                {currentStudents.length === 0 && <div className="text-center text-gray-400 py-10">لا يوجد طلاب</div>}
                             </div>
                         )}
                         
                         {activeTab === "servants" && (
                             <div className="glass-card p-5">
-                                <h2 className="font-bold text-lg mb-3">فريق الخدمة</h2>
-                                {servants.map(s => (
-                                    <div key={s.id} className="flex justify-between items-center p-2 border-b">
-                                        <div><i className="fas fa-user-check text-green-500"></i> {s.name}</div>
-                                    </div>
-                                ))}
+                                <h2 className="font-bold text-lg mb-3"><i className="fas fa-user-friends text-purple-500"></i> فريق الخدمة - {selectedClass}</h2>
+                                <div className="space-y-2">
+                                    {currentServantsHistory.map(s => (
+                                        <div key={s.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-2xl">
+                                            <div><i className="fas fa-user-check text-green-500 ml-2"></i> {s.name}</div>
+                                            <span className="text-xs text-gray-400">{s.lastLogin}</span>
+                                        </div>
+                                    ))}
+                                    {currentServantsHistory.length === 0 && <div className="text-center text-gray-400 py-10">لا يوجد خدام مسجلين في {selectedClass}</div>}
+                                </div>
                             </div>
                         )}
                     </div>
                     
-                    {/* القائمة السفلية - مع إضافة أعياد الميلاد */}
                     <div className="bottom-nav fixed bottom-0 left-0 right-0 py-2 px-3 flex justify-around">
-                        {[
-                            {id:"home", icon:"fas fa-home", label:"الرئيسية"},
-                            {id:"students", icon:"fas fa-id-card", label:"الكروت"},
-                            {id:"attendance", icon:"fas fa-calendar-check", label:"الحضور"},
-                            {id:"teams", icon:"fas fa-users", label:"الفرق"},
-                            {id:"birthdays", icon:"fas fa-birthday-cake", label:"أعياد"},
-                            {id:"reports", icon:"fas fa-chart-simple", label:"تقرير"},
-                            {id:"servants", icon:"fas fa-user-friends", label:"الخدام"}
-                        ].map(tab => (
+                        {[{id:"home", icon:"fas fa-home", label:"الرئيسية"},{id:"students", icon:"fas fa-id-card", label:"الكروت"},{id:"attendance", icon:"fas fa-calendar-check", label:"الحضور"},{id:"teams", icon:"fas fa-users", label:"الفرق"},{id:"birthdays", icon:"fas fa-birthday-cake", label:"أعياد"},{id:"reports", icon:"fas fa-chart-simple", label:"تقرير"},{id:"servants", icon:"fas fa-user-friends", label:"الخدام"}].map(tab => (
                             <button key={tab.id} onClick={() => setActiveTab(tab.id)} className="flex flex-col items-center flex-1">
                                 <i className={`${tab.icon} text-xl ${activeTab === tab.id ? 'text-purple-600' : 'text-gray-400'}`}></i>
                                 <span className={`text-[10px] ${activeTab === tab.id ? 'text-purple-600 font-semibold' : 'text-gray-400'}`}>{tab.label}</span>
@@ -744,20 +826,17 @@
                         </button>
                     )}
                     
-                    {/* مودال استيراد Excel */}
+                    {/* مودال استيراد Excel - بدون خاصية الاكتشاف */}
                     {showImportModal && (
                         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={()=>setShowImportModal(false)}>
                             <div className="bg-white rounded-3xl p-6 w-full max-w-md" onClick={e=>e.stopPropagation()}>
                                 <h3 className="font-bold text-lg mb-3"><i className="fas fa-file-excel text-green-600"></i> استيراد Excel</h3>
-                                <div className="mb-3">
-                                    <label className="block text-sm mb-1">الفصل الافتراضي:</label>
-                                    <select className="w-full p-3 border rounded-2xl" value={importClass} onChange={e=>setImportClass(e.target.value)}>
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">اختر الصف المستهدف:</label>
+                                    <select className="w-full p-3 border rounded-2xl bg-white" value={importClass} onChange={e=>setImportClass(e.target.value)}>
                                         {CLASSES.map(c=><option key={c}>{c}</option>)}
                                     </select>
-                                </div>
-                                <div className="mb-3 flex items-center gap-2">
-                                    <input type="checkbox" id="detectClass" checked={importDetectClass} onChange={e=>setImportDetectClass(e.target.checked)}/>
-                                    <label htmlFor="detectClass" className="text-sm">اكتشاف الصف تلقائياً</label>
+                                    <p className="text-xs text-gray-400 mt-2">سيتم إضافة جميع الطلاب المستوردين إلى هذا الصف</p>
                                 </div>
                                 <div className="border-2 border-dashed border-purple-300 rounded-2xl p-6 text-center cursor-pointer bg-purple-50/30" onClick={()=>document.getElementById('excelImp').click()}>
                                     <i className="fas fa-cloud-upload-alt text-4xl text-purple-400"></i>
@@ -767,39 +846,24 @@
                                 {importInfo && <div className="mt-3 p-2 bg-blue-50 rounded-2xl text-sm">{importInfo}</div>}
                                 {importPreview.length > 0 && (
                                     <div className="mt-4">
-                                        <p className="font-bold text-green-600">{importPreview.length} طالب جاهز</p>
+                                        <p className="font-bold text-green-600">{importPreview.length} طالب جاهز للاستيراد إلى {importClass}</p>
                                         <button onClick={confirmImport} className="w-full bg-green-600 text-white py-3 rounded-2xl mt-2">تأكيد الاستيراد</button>
                                     </div>
                                 )}
-                                <button onClick={()=>{setShowImportModal(false); setImportPreview([]);}} className="w-full mt-3 text-gray-500">إغلاق</button>
+                                <button onClick={()=>{setShowImportModal(false); setImportPreview([]); setImportInfo("");}} className="w-full mt-3 text-gray-500">إغلاق</button>
                             </div>
                         </div>
                     )}
                     
-                    {/* مودال إضافة نقاط للفريق */}
                     {showPointsModal && (
                         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => { setShowPointsModal(false); }}>
                             <div className="bg-white rounded-3xl p-6 w-full max-w-md" onClick={e=>e.stopPropagation()}>
-                                <h3 className="font-bold text-xl mb-4"><i className="fas fa-trophy text-amber-500"></i> إضافة نقاط للفريق</h3>
+                                <h3 className="font-bold text-xl mb-4"><i className="fas fa-trophy text-amber-500"></i> إضافة نقاط للفريق - {selectedClass}</h3>
                                 <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm mb-1">عدد النقاط</label>
-                                        <div className="flex gap-2">
-                                            <input type="number" className="flex-1 p-3 border rounded-2xl" value={pointsAmount} onChange={e => setPointsAmount(parseInt(e.target.value) || 0)} min="1"/>
-                                            <button onClick={() => setPointsAmount(5)} className="bg-gray-100 px-4 rounded-2xl">5</button>
-                                            <button onClick={() => setPointsAmount(10)} className="bg-gray-100 px-4 rounded-2xl">10</button>
-                                            <button onClick={() => setPointsAmount(20)} className="bg-gray-100 px-4 rounded-2xl">20</button>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm mb-1">سبب الإضافة</label>
-                                        <input type="text" className="w-full p-3 border rounded-2xl" placeholder="مثال: فوز في مسابقة" value={pointsReason} onChange={e => setPointsReason(e.target.value)}/>
-                                    </div>
+                                    <div><label className="block text-sm mb-1">عدد النقاط</label><div className="flex gap-2"><input type="number" className="flex-1 p-3 border rounded-2xl" value={pointsAmount} onChange={e => setPointsAmount(parseInt(e.target.value) || 0)} min="1"/><button onClick={() => setPointsAmount(5)} className="bg-gray-100 px-4 rounded-2xl">5</button><button onClick={() => setPointsAmount(10)} className="bg-gray-100 px-4 rounded-2xl">10</button><button onClick={() => setPointsAmount(20)} className="bg-gray-100 px-4 rounded-2xl">20</button></div></div>
+                                    <div><label className="block text-sm mb-1">سبب الإضافة</label><input type="text" className="w-full p-3 border rounded-2xl" placeholder="مثال: فوز في مسابقة" value={pointsReason} onChange={e => setPointsReason(e.target.value)}/></div>
                                 </div>
-                                <div className="flex gap-3 mt-5">
-                                    <button onClick={() => pointsTeamId && addTeamPoints(pointsTeamId, pointsAmount, pointsReason)} className="flex-1 bg-green-600 text-white py-3 rounded-2xl">إضافة</button>
-                                    <button onClick={() => { setShowPointsModal(false); setPointsTeamId(null); }} className="flex-1 bg-gray-200 py-3 rounded-2xl">إلغاء</button>
-                                </div>
+                                <div className="flex gap-3 mt-5"><button onClick={() => pointsTeamId && addTeamPoints(pointsTeamId, pointsAmount, pointsReason)} className="flex-1 bg-green-600 text-white py-3 rounded-2xl">إضافة</button><button onClick={() => { setShowPointsModal(false); setPointsTeamId(null); }} className="flex-1 bg-gray-200 py-3 rounded-2xl">إلغاء</button></div>
                             </div>
                         </div>
                     )}
@@ -807,7 +871,7 @@
                     {showAddModal && (
                         <div className="fixed inset-0 bg-black/40 flex items-end justify-center z-50" onClick={() => setShowAddModal(false)}>
                             <div className="bg-white w-full rounded-t-3xl p-6 max-h-[85vh] overflow-auto" onClick={e=>e.stopPropagation()}>
-                                <h3 className="font-bold text-xl mb-4">إضافة طالب جديد</h3>
+                                <h3 className="font-bold text-xl mb-4">إضافة طالب جديد إلى {selectedClass}</h3>
                                 <div className="space-y-3">
                                     <input type="text" placeholder="الاسم الكامل" className="w-full p-3 border rounded-2xl" value={newStudent.name} onChange={e=>setNewStudent({...newStudent,name:e.target.value})}/>
                                     <input type="tel" placeholder="رقم التليفون" className="w-full p-3 border rounded-2xl" value={newStudent.phone} onChange={e=>setNewStudent({...newStudent,phone:e.target.value})}/>
@@ -815,11 +879,7 @@
                                     <input type="text" placeholder="العنوان" className="w-full p-3 border rounded-2xl" value={newStudent.address} onChange={e=>setNewStudent({...newStudent,address:e.target.value})}/>
                                     <input type="date" className="w-full p-3 border rounded-2xl" value={newStudent.birthday} onChange={e=>setNewStudent({...newStudent,birthday:e.target.value})}/>
                                 </div>
-                                <div className="flex gap-3 mt-5">
-                                    <button onClick={addStudent} className="flex-1 bg-purple-600 text-white py-3 rounded-2xl font-bold">حفظ</button>
-                                    <button onClick={()=>setShowAddModal(false)} className="flex-1 bg-gray-200 py-3 rounded-2xl">إلغاء</button>
-                                </div>
-                                <button onClick={()=>{setShowAddModal(false); setShowImportModal(true);}} className="w-full mt-3 text-purple-600 text-sm"><i className="fas fa-file-excel"></i> استيراد من Excel</button>
+                                <div className="flex gap-3 mt-5"><button onClick={addStudent} className="flex-1 bg-purple-600 text-white py-3 rounded-2xl font-bold">حفظ</button><button onClick={()=>setShowAddModal(false)} className="flex-1 bg-gray-200 py-3 rounded-2xl">إلغاء</button></div>
                             </div>
                         </div>
                     )}
@@ -827,12 +887,9 @@
                     {showTeamModal && (
                         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={()=>{setShowTeamModal(false); setEditingTeam(null);}}>
                             <div className="bg-white rounded-3xl p-6 w-full max-w-md" onClick={e=>e.stopPropagation()}>
-                                <h3 className="font-bold text-xl mb-4">{editingTeam ? 'تعديل الفريق' : 'فريق جديد'}</h3>
+                                <h3 className="font-bold text-xl mb-4">{editingTeam ? 'تعديل الفريق' : 'فريق جديد'} - {selectedClass}</h3>
                                 <input type="text" placeholder="اسم الفريق" className="w-full p-3 border rounded-2xl mb-4" value={editingTeam ? editingTeam.name : newTeamName} onChange={e => editingTeam ? setEditingTeam({...editingTeam, name: e.target.value}) : setNewTeamName(e.target.value)}/>
-                                <div className="flex gap-3">
-                                    <button onClick={editingTeam ? updateTeam : createTeam} className="flex-1 bg-purple-600 text-white py-3 rounded-2xl font-bold">حفظ</button>
-                                    <button onClick={()=>{setShowTeamModal(false); setEditingTeam(null);}} className="flex-1 bg-gray-200 py-3 rounded-2xl">إلغاء</button>
-                                </div>
+                                <div className="flex gap-3"><button onClick={editingTeam ? updateTeam : createTeam} className="flex-1 bg-purple-600 text-white py-3 rounded-2xl font-bold">حفظ</button><button onClick={()=>{setShowTeamModal(false); setEditingTeam(null);}} className="flex-1 bg-gray-200 py-3 rounded-2xl">إلغاء</button></div>
                             </div>
                         </div>
                     )}
@@ -840,7 +897,7 @@
                     {editingStudent && (
                         <div className="fixed inset-0 bg-black/40 flex items-end justify-center z-50" onClick={()=>setEditingStudent(null)}>
                             <div className="bg-white w-full rounded-t-3xl p-6" onClick={e=>e.stopPropagation()}>
-                                <h3 className="font-bold text-xl mb-3">تعديل البيانات</h3>
+                                <h3 className="font-bold text-xl mb-3">تعديل بيانات الطالب</h3>
                                 <div className="space-y-3">
                                     <input className="w-full p-3 border rounded-2xl" value={editingStudent.name} onChange={e=>setEditingStudent({...editingStudent,name:e.target.value})}/>
                                     <input className="w-full p-3 border rounded-2xl" value={editingStudent.phone} onChange={e=>setEditingStudent({...editingStudent,phone:e.target.value})}/>
@@ -848,10 +905,7 @@
                                     <input className="w-full p-3 border rounded-2xl" value={editingStudent.address||""} onChange={e=>setEditingStudent({...editingStudent,address:e.target.value})}/>
                                     <input type="date" className="w-full p-3 border rounded-2xl" value={editingStudent.birthday||""} onChange={e=>setEditingStudent({...editingStudent,birthday:e.target.value})}/>
                                 </div>
-                                <div className="flex gap-2 mt-4">
-                                    <button onClick={updateStudent} className="flex-1 bg-purple-600 text-white py-3 rounded-2xl font-bold">حفظ</button>
-                                    <button onClick={()=>setEditingStudent(null)} className="flex-1 bg-gray-200 py-3 rounded-2xl">إلغاء</button>
-                                </div>
+                                <div className="flex gap-2 mt-4"><button onClick={updateStudent} className="flex-1 bg-purple-600 text-white py-3 rounded-2xl font-bold">حفظ</button><button onClick={()=>setEditingStudent(null)} className="flex-1 bg-gray-200 py-3 rounded-2xl">إلغاء</button></div>
                             </div>
                         </div>
                     )}
